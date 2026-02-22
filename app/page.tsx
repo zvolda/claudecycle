@@ -41,6 +41,10 @@ const T = {
     histLink:    "text-zinc-600 hover:text-zinc-300",
     hint:        "text-zinc-600",
     saved:       "text-zinc-300",
+    cellDiag:    "bg-zinc-800",
+    cellEmpty:   "bg-zinc-900",
+    cellBorder:  "border-zinc-700",
+    cellText:    "text-white",
   },
   light: {
     main:        "bg-white text-black",
@@ -73,6 +77,10 @@ const T = {
     histLink:    "text-zinc-400 hover:text-zinc-700",
     hint:        "text-zinc-400",
     saved:       "text-zinc-700",
+    cellDiag:    "bg-zinc-300",
+    cellEmpty:   "bg-zinc-50",
+    cellBorder:  "border-zinc-300",
+    cellText:    "text-black",
   },
   color: {
     main:        "bg-gray-950 text-white",
@@ -105,6 +113,10 @@ const T = {
     histLink:    "text-gray-600 hover:text-gray-400",
     hint:        "text-gray-600",
     saved:       "text-green-400",
+    cellDiag:    "bg-gray-800",
+    cellEmpty:   "bg-gray-900",
+    cellBorder:  "border-gray-700",
+    cellText:    "text-white",
   },
 } as const;
 
@@ -133,13 +145,22 @@ function computeStandings(games: Game[]): Standing[] {
     .sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
 }
 
+// ── Cross-reference helpers ──────────────────────────────────────────────────
+function getMatchResult(games: Game[], teamA: string, teamB: string): string | null {
+  for (const g of games) {
+    if (g.player1_name === teamA && g.player2_name === teamB) return `${g.player1_score}:${g.player2_score}`;
+    if (g.player1_name === teamB && g.player2_name === teamA) return `${g.player2_score}:${g.player1_score}`;
+  }
+  return null;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function GamePage() {
   const [theme, setTheme] = useState<ThemeKey>("dark");
   const [teams, setTeams] = useState<string[]>([]);
   const [newTeam, setNewTeam] = useState("");
-  const [player1, setPlayer1] = useState("Team 1");
-  const [player2, setPlayer2] = useState("Team 2");
+  const [player1, setPlayer1] = useState("");
+  const [player2, setPlayer2] = useState("");
   const [score1, setScore1] = useState(0);
   const [score2, setScore2] = useState(0);
   const [selectedMinutes, setSelectedMinutes] = useState(5);
@@ -149,6 +170,7 @@ export default function GamePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [tab, setTab] = useState<"game" | "settings" | "results">("game");
+  const [half, setHalf] = useState<1 | 2>(1);
   const [editingTime, setEditingTime] = useState(false);
   const [games, setGames] = useState<Game[]>([]);
   const [loadingGames, setLoadingGames] = useState(false);
@@ -156,7 +178,11 @@ export default function GamePage() {
 
   useEffect(() => {
     const storedTeams = localStorage.getItem("sport-teams");
-    if (storedTeams) setTeams(JSON.parse(storedTeams));
+    if (storedTeams) {
+      const parsed = JSON.parse(storedTeams) as string[];
+      setTeams(parsed);
+      if (parsed.length > 0) { setPlayer1(parsed[0]); if (parsed.length > 1) setPlayer2(parsed[1]); }
+    }
     const storedTheme = localStorage.getItem("sport-theme") as ThemeKey | null;
     if (storedTheme && T[storedTheme]) setTheme(storedTheme);
   }, []);
@@ -166,19 +192,25 @@ export default function GamePage() {
     localStorage.setItem("sport-theme", t);
   };
 
+  const [fetchError, setFetchError] = useState("");
   const fetchGames = useCallback(async () => {
-    setLoadingGames(true);
+    setLoadingGames(true); setFetchError("");
     try {
-      const { data } = await getSupabase().from("games").select("*").order("created_at", { ascending: false });
+      const { data, error } = await getSupabase().from("games").select("*").order("created_at", { ascending: false });
+      if (error) setFetchError(error.message);
       setGames(data ?? []);
-    } catch { setGames([]); }
-    setLoadingGames(false);
+    } catch { setGames([]); setFetchError("Connection failed"); } finally { setLoadingGames(false); }
   }, []);
 
   useEffect(() => { if (tab === "results") fetchGames(); }, [tab, fetchGames]);
 
   const persistTeams = (list: string[]) => { setTeams(list); localStorage.setItem("sport-teams", JSON.stringify(list)); };
-  const addTeam = () => { const n = newTeam.trim(); if (!n || teams.includes(n)) return; persistTeams([...teams, n]); setNewTeam(""); };
+  const addTeam = () => {
+    const n = newTeam.trim(); if (!n || teams.includes(n)) return;
+    const updated = [...teams, n]; persistTeams(updated); setNewTeam("");
+    if (updated.length === 1) setPlayer1(n);
+    if (updated.length === 2) setPlayer2(n);
+  };
   const removeTeam = (n: string) => persistTeams(teams.filter((t) => t !== n));
 
   const clearTimer = () => { if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = null; };
@@ -193,8 +225,14 @@ export default function GamePage() {
   }, [running, handleFinish]);
 
   const selectPreset = (m: number) => { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setEditingTime(false); setSelectedMinutes(m); setSecondsLeft(m * 60); };
-  const handleTimerClick = () => { if (editingTime || finished) return; setRunning((r) => !r); };
-  const swapTeams = () => { setPlayer1(player2); setPlayer2(player1); setScore1(score2); setScore2(score1); };
+  const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); };
+  const teamsReady = teams.length > 0 && teams.includes(player1) && teams.includes(player2) && player1 !== player2;
+  const handleTimerClick = () => { if (editingTime || finished || !teamsReady) return; setRunning((r) => !r); };
+  const swapTeams = () => {
+    const wasFinished = finished; const p1 = player1, s1 = score1, s2 = score2;
+    if (wasFinished) { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setSecondsLeft(selectedMinutes * 60); if (half === 1) setHalf(2); }
+    setPlayer1(player2); setPlayer2(p1); if (!wasFinished) { setScore1(s2); setScore2(s1); }
+  };
   const handleScoreClick = (setter: React.Dispatch<React.SetStateAction<number>>, e: React.MouseEvent) => {
     e.preventDefault();
     setter((prev) => e.type === "contextmenu" ? Math.max(0, prev - 1) : prev + 1);
@@ -207,10 +245,20 @@ export default function GamePage() {
     if (seg === "tens") setSecondsLeft(m * 60 + ((ts + (inc ? 1 : 5)) % 6) * 10 + os);
     if (seg === "ones") setSecondsLeft(m * 60 + ts * 10 + (os + (inc ? 1 : 9)) % 10);
   };
+  const [saveError, setSaveError] = useState("");
   const saveGame = async () => {
-    setSaving(true);
-    await getSupabase().from("games").insert({ player1_name: player1, player2_name: player2, player1_score: score1, player2_score: score2, duration_minutes: selectedMinutes });
-    setSaving(false); setSaved(true);
+    setSaving(true); setSaveError("");
+    try {
+      const sb = getSupabase();
+      // Delete any existing game between these two teams (either order)
+      await sb.from("games").delete().eq("player1_name", player1).eq("player2_name", player2);
+      await sb.from("games").delete().eq("player1_name", player2).eq("player2_name", player1);
+      // Insert the new/updated result
+      const { error } = await sb.from("games").insert({ player1_name: player1, player2_name: player2, player1_score: score1, player2_score: score2, duration_minutes: selectedMinutes });
+      if (error) setSaveError(error.message);
+      else { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    } catch { setSaveError("Connection failed"); }
+    setSaving(false);
   };
 
   const mins = Math.floor(secondsLeft / 60), secs = secondsLeft % 60;
@@ -249,6 +297,11 @@ export default function GamePage() {
             </div>
           </div>
 
+          {/* Half indicator */}
+          <div className="absolute flex justify-center" style={{ left: "24%", right: "24%", top: "28%" }}>
+            <span className={`text-[3vw] font-bold ${th.textMuted}`}>{half === 1 ? "1st" : "2nd"}</span>
+          </div>
+
           {/* Timer — framed like score boxes */}
           <div onClick={handleTimerClick}
             className={`absolute rounded-xl flex flex-col items-center justify-center ${th.timerBox}`}
@@ -274,7 +327,11 @@ export default function GamePage() {
               </span>
             )}
 
-            {!running && !finished && !editingTime && <span className={`absolute bottom-[10%] text-[1.1vw] font-medium ${th.hint}`}>click to start</span>}
+            {!running && !finished && !editingTime && (
+              <span className={`absolute bottom-[10%] text-[1.1vw] font-medium ${!teamsReady ? "text-red-500" : th.hint}`}>
+                {!teamsReady ? "select two different teams to start" : "click to start"}
+              </span>
+            )}
             {editingTime && <span className="absolute bottom-[10%] text-yellow-600 text-[1.1vw] font-medium">left click + · right click −</span>}
             {finished && <p className="text-red-500 font-bold animate-pulse text-[2.5vw] mt-[2vh]">Time&apos;s up!</p>}
           </div>
@@ -301,7 +358,9 @@ export default function GamePage() {
                 {editingTime ? "Done" : "Set Time"}
               </button>
             )}
-            {saved ? (
+            {saveError ? (
+              <span className="font-semibold text-[1.2vw] text-red-500">{saveError}</span>
+            ) : saved ? (
               <span className={`font-semibold text-[1.2vw] ${th.saved}`}>✓ Saved</span>
             ) : (
               <button onClick={saveGame} disabled={saving} className={`px-[2vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] transition-colors disabled:opacity-40 ${th.btnPrimary}`}>
@@ -377,49 +436,86 @@ export default function GamePage() {
       )}
 
       {/* ══════════════════ RESULTS TAB ══════════════════ */}
-      {tab === "results" && (
+      {tab === "results" && (() => {
+        const standMap = new Map(standings.map(s => [s.team, s]));
+        // Standings list: sorted by points, then goal diff, then goals for
+        const rankedTeams = [...teams].sort((a, b) => {
+          const sa = standMap.get(a), sb = standMap.get(b);
+          const pa = sa?.points ?? 0, pb = sb?.points ?? 0;
+          if (pb !== pa) return pb - pa;
+          const da = (sa?.gf ?? 0) - (sa?.ga ?? 0), db = (sb?.gf ?? 0) - (sb?.ga ?? 0);
+          if (db !== da) return db - da;
+          return (sb?.gf ?? 0) - (sa?.gf ?? 0);
+        });
+        // Cross-reference table: alphabetical
+        const alphaTeams = [...teams].sort((a, b) => a.localeCompare(b));
+        return (
         <div className="flex-1 flex flex-col p-[2.5vw] gap-[2vh] min-h-0">
           <div className="flex items-center justify-between shrink-0">
-            <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Standings</h2>
+            <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Results</h2>
             <button onClick={fetchGames} className={`text-[1.1vw] transition-colors px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
           </div>
-          {loadingGames ? (
-            <p className={`text-[1.3vw] ${th.textMuted}`}>Loading...</p>
-          ) : standings.length === 0 ? (
-            <p className={`text-[1.3vw] ${th.textMuted}`}>No games recorded yet.</p>
+
+          {fetchError && <p className="text-[1.2vw] text-red-500 shrink-0">{fetchError}</p>}
+          {teams.length === 0 ? (
+            <p className={`text-[1.3vw] ${th.textMuted}`}>No teams created yet. Add teams in Settings.</p>
           ) : (
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className={`text-[1.1vw] uppercase tracking-wide ${th.tableHead}`}>
-                    {["#","Team","P","W","D","L","GF","GA","GD","PTS"].map((h, i) => (
-                      <th key={h} className={`pb-[1.5vh] font-semibold ${i === 1 ? "pr-[2vw]" : "px-[1vw] text-center"} ${i === 9 ? th.textPrimary : ""}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {standings.map((s, i) => (
-                    <tr key={s.team} className={`text-[1.3vw] transition-colors ${th.tableRow} ${i === 0 ? th.tableRow0 : th.tableRowN}`}>
-                      <td className={`py-[1.8vh] px-[1vw] font-semibold ${th.textMuted}`}>{i + 1}</td>
-                      <td className={`py-[1.8vh] pr-[2vw] font-bold ${th.textPrimary}`}>{s.team}</td>
-                      <td className="py-[1.8vh] px-[1vw] text-center">{s.played}</td>
-                      <td className={`py-[1.8vh] px-[1vw] text-center font-semibold ${th.textPrimary}`}>{s.won}</td>
-                      <td className="py-[1.8vh] px-[1vw] text-center">{s.drawn}</td>
-                      <td className="py-[1.8vh] px-[1vw] text-center">{s.lost}</td>
-                      <td className="py-[1.8vh] px-[1vw] text-center">{s.gf}</td>
-                      <td className="py-[1.8vh] px-[1vw] text-center">{s.ga}</td>
-                      <td className={`py-[1.8vh] px-[1vw] text-center font-semibold ${s.gd > 0 ? th.textPrimary : th.textMuted}`}>
-                        {s.gd > 0 ? `+${s.gd}` : s.gd}
-                      </td>
-                      <td className={`py-[1.8vh] px-[1vw] text-center font-black text-[1.6vw] ${th.textPrimary}`}>{s.points}</td>
+            <>
+              {/* ── Team standings list (centered, no borders, big text) ── */}
+              <div className="shrink-0 flex justify-center">
+                <div className="w-fit">
+                  {rankedTeams.map((team, i) => {
+                    const st = standMap.get(team);
+                    return (
+                      <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
+                        <span className={`w-[2.5vw] text-right font-bold ${th.textMuted}`}>{i + 1}.</span>
+                        <span className="ml-[1vw] w-[20vw] font-semibold">{team}</span>
+                        <span className="w-[4vw] text-center font-black">{st?.points ?? 0}</span>
+                        <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Cross-reference matrix (centered, scrollable) ── */}
+              <div className="flex-1 overflow-auto min-h-0 flex justify-center">
+                {loadingGames ? (
+                  <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
+                ) : (
+                <table className={`border-collapse text-[1.1vw] ${th.cellText} h-fit`}>
+                  <thead>
+                    <tr>
+                      <th className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-bold`}></th>
+                      {alphaTeams.map((t, i) => (
+                        <th key={i} className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-center font-bold min-w-[3.5vw]`}>{i + 1}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {alphaTeams.map((team, ri) => (
+                      <tr key={team}>
+                        <td className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
+                        {alphaTeams.map((opp, ci) => {
+                          if (ri === ci) return <td key={ci} className={`border ${th.cellBorder} ${th.cellDiag}`} />;
+                          const result = getMatchResult(games, team, opp);
+                          return (
+                            <td key={ci} className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap ${result ? "" : th.cellEmpty}`}>
+                              {result ?? ""}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                )}
+              </div>
+            </>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* ══════════════════ TAB BAR ══════════════════ */}
       <div className={`flex shrink-0 ${th.tabBar}`}>
