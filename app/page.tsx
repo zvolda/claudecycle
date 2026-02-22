@@ -464,13 +464,17 @@ export default function GamePage() {
               {/* ── Team standings list (centered, no borders, big text) ── */}
               <div className="shrink-0 flex justify-center">
                 <div className="w-fit">
-                  {rankedTeams.map((team, i) => {
+                  <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
+                    <span className="w-[20vw]">Team</span>
+                    <span className="w-[5vw] text-center">Points</span>
+                    <span className="w-[6vw] text-center">Score</span>
+                  </div>
+                  {rankedTeams.map((team) => {
                     const st = standMap.get(team);
                     return (
                       <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
-                        <span className={`w-[2.5vw] text-right font-bold ${th.textMuted}`}>{i + 1}.</span>
-                        <span className="ml-[1vw] w-[20vw] font-semibold">{team}</span>
-                        <span className="w-[4vw] text-center font-black">{st?.points ?? 0}</span>
+                        <span className="w-[20vw] font-semibold">{team}</span>
+                        <span className="w-[5vw] text-center font-black">{st?.points ?? 0}</span>
                         <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
                       </div>
                     );
