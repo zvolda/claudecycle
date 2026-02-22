@@ -145,6 +145,16 @@ function computeStandings(games: Game[]): Standing[] {
     .sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
 }
 
+// ── Deduplicate games (keep latest per team pair) ───────────────────────────
+function dedupeGames(games: Game[]): Game[] {
+  const seen = new Map<string, Game>();
+  for (const g of games) {
+    const key = [g.player1_name, g.player2_name].sort().join("\0");
+    if (!seen.has(key)) seen.set(key, g); // games already sorted by created_at desc
+  }
+  return Array.from(seen.values());
+}
+
 // ── Cross-reference helpers ──────────────────────────────────────────────────
 function getMatchResult(games: Game[], teamA: string, teamB: string): string | null {
   for (const g of games) {
@@ -267,7 +277,8 @@ export default function GamePage() {
   const progress = secondsLeft / (selectedMinutes * 60);
   const th = T[theme];
   const timerColor = finished ? "#ef4444" : editingTime ? "#eab308" : running ? th.timerRun : th.timerIdle;
-  const standings = computeStandings(games);
+  const uniqueGames = dedupeGames(games).filter(g => teams.includes(g.player1_name) && teams.includes(g.player2_name));
+  const standings = computeStandings(uniqueGames);
 
   return (
     <main className={`h-screen w-screen overflow-hidden select-none flex flex-col ${th.main}`}>
@@ -502,7 +513,7 @@ export default function GamePage() {
                         <td className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
                         {alphaTeams.map((opp, ci) => {
                           if (ri === ci) return <td key={ci} className={`border ${th.cellBorder} ${th.cellDiag}`} />;
-                          const result = getMatchResult(games, team, opp);
+                          const result = getMatchResult(uniqueGames, team, opp);
                           return (
                             <td key={ci} className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap ${result ? "" : th.cellEmpty}`}>
                               {result ?? ""}
