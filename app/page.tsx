@@ -1,10 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import Link from "next/link";
-import { getSupabase, Game } from "@/lib/supabase";
+import {
+  getSupabase,
+  Game,
+  Room,
+  createRoom,
+  joinRoom,
+  updateRoomTeams,
+  updateRoomDuration,
+  touchRoom,
+  fetchRoomGames,
+} from "@/lib/supabase";
 
 const PRESETS = [5, 6, 7];
+const STORAGE_PIN_KEY = "sport-room-pin";
 
 // ── Themes ────────────────────────────────────────────────────────────────────
 type ThemeKey = "dark" | "light" | "color";
@@ -38,13 +48,15 @@ const T = {
     tableRowN:   "text-zinc-500",
     swap:        "text-zinc-400 hover:text-white",
     remove:      "text-zinc-500 hover:text-red-400",
-    histLink:    "text-zinc-600 hover:text-zinc-300",
     hint:        "text-zinc-600",
     saved:       "text-zinc-300",
     cellDiag:    "bg-zinc-800",
     cellEmpty:   "bg-zinc-900",
     cellBorder:  "border-zinc-700",
     cellText:    "text-white",
+    gate:        "bg-black",
+    gateBorder:  "border-zinc-800",
+    gateText:    "text-zinc-400",
   },
   light: {
     main:        "bg-white text-black",
@@ -74,13 +86,15 @@ const T = {
     tableRowN:   "text-zinc-500",
     swap:        "text-zinc-400 hover:text-black",
     remove:      "text-zinc-400 hover:text-red-500",
-    histLink:    "text-zinc-400 hover:text-zinc-700",
     hint:        "text-zinc-400",
     saved:       "text-zinc-700",
     cellDiag:    "bg-zinc-300",
     cellEmpty:   "bg-zinc-50",
     cellBorder:  "border-zinc-300",
     cellText:    "text-black",
+    gate:        "bg-white",
+    gateBorder:  "border-zinc-300",
+    gateText:    "text-zinc-500",
   },
   color: {
     main:        "bg-gray-950 text-white",
@@ -110,13 +124,15 @@ const T = {
     tableRowN:   "text-gray-400",
     swap:        "text-gray-400 hover:text-white",
     remove:      "text-gray-500 hover:text-red-400",
-    histLink:    "text-gray-600 hover:text-gray-400",
     hint:        "text-gray-600",
     saved:       "text-green-400",
     cellDiag:    "bg-gray-800",
     cellEmpty:   "bg-gray-900",
     cellBorder:  "border-gray-700",
     cellText:    "text-white",
+    gate:        "bg-gray-950",
+    gateBorder:  "border-gray-800",
+    gateText:    "text-gray-500",
   },
 } as const;
 
@@ -167,6 +183,15 @@ function getMatchResult(games: Game[], teamA: string, teamB: string): string | n
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function GamePage() {
   const [theme, setTheme] = useState<ThemeKey>("dark");
+
+  // Room state
+  const [room, setRoom] = useState<Room | null>(null);
+  const [pinInput, setPinInput] = useState("");
+  const [roomLoading, setRoomLoading] = useState(false);
+  const [roomError, setRoomError] = useState("");
+  const [checkingStorage, setCheckingStorage] = useState(true);
+
+  // Game state
   const [teams, setTeams] = useState<string[]>([]);
   const [newTeam, setNewTeam] = useState("");
   const [player1, setPlayer1] = useState("");
@@ -185,16 +210,34 @@ export default function GamePage() {
   const [games, setGames] = useState<Game[]>([]);
   const [loadingGames, setLoadingGames] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [fetchError, setFetchError] = useState("");
+  const [saveError, setSaveError] = useState("");
 
+  // ── Load theme + check for saved room PIN on mount ──
   useEffect(() => {
-    const storedTeams = localStorage.getItem("sport-teams");
-    if (storedTeams) {
-      const parsed = JSON.parse(storedTeams) as string[];
-      setTeams(parsed);
-      if (parsed.length > 0) { setPlayer1(parsed[0]); if (parsed.length > 1) setPlayer2(parsed[1]); }
-    }
     const storedTheme = localStorage.getItem("sport-theme") as ThemeKey | null;
     if (storedTheme && T[storedTheme]) setTheme(storedTheme);
+
+    const savedPin = localStorage.getItem(STORAGE_PIN_KEY);
+    if (savedPin) {
+      joinRoom(savedPin).then((r) => {
+        if (r) {
+          setRoom(r);
+          setTeams(r.teams);
+          setSelectedMinutes(r.duration_minutes);
+          setSecondsLeft(r.duration_minutes * 60);
+          if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
+        } else {
+          localStorage.removeItem(STORAGE_PIN_KEY);
+        }
+        setCheckingStorage(false);
+      }).catch(() => {
+        localStorage.removeItem(STORAGE_PIN_KEY);
+        setCheckingStorage(false);
+      });
+    } else {
+      setCheckingStorage(false);
+    }
   }, []);
 
   const changeTheme = (t: ThemeKey) => {
@@ -202,19 +245,70 @@ export default function GamePage() {
     localStorage.setItem("sport-theme", t);
   };
 
-  const [fetchError, setFetchError] = useState("");
+  // ── Room actions ──
+  const handleCreateRoom = async () => {
+    setRoomLoading(true); setRoomError("");
+    try {
+      const r = await createRoom();
+      localStorage.setItem(STORAGE_PIN_KEY, r.pin);
+      setRoom(r);
+      setTeams(r.teams);
+      setSelectedMinutes(r.duration_minutes);
+      setSecondsLeft(r.duration_minutes * 60);
+    } catch (e) {
+      setRoomError(e instanceof Error ? e.message : "Failed to create room");
+    }
+    setRoomLoading(false);
+  };
+
+  const handleJoinRoom = async () => {
+    const pin = pinInput.trim();
+    if (!pin) return;
+    setRoomLoading(true); setRoomError("");
+    try {
+      const r = await joinRoom(pin);
+      if (!r) { setRoomError("Room not found"); setRoomLoading(false); return; }
+      localStorage.setItem(STORAGE_PIN_KEY, r.pin);
+      setRoom(r);
+      setTeams(r.teams);
+      setSelectedMinutes(r.duration_minutes);
+      setSecondsLeft(r.duration_minutes * 60);
+      if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
+    } catch (e) {
+      setRoomError(e instanceof Error ? e.message : "Failed to join room");
+    }
+    setRoomLoading(false);
+  };
+
+  const handleLeaveRoom = () => {
+    localStorage.removeItem(STORAGE_PIN_KEY);
+    setRoom(null);
+    setPinInput("");
+    setTeams([]);
+    setPlayer1(""); setPlayer2("");
+    setScore1(0); setScore2(0);
+    setGames([]);
+    setTab("game");
+  };
+
+  // ── Fetch games scoped to room ──
   const fetchGames = useCallback(async () => {
+    if (!room) return;
     setLoadingGames(true); setFetchError("");
     try {
-      const { data, error } = await getSupabase().from("games").select("*").order("created_at", { ascending: false });
-      if (error) setFetchError(error.message);
-      setGames(data ?? []);
+      const data = await fetchRoomGames(room.id);
+      setGames(data);
     } catch { setGames([]); setFetchError("Connection failed"); } finally { setLoadingGames(false); }
-  }, []);
+  }, [room]);
 
-  useEffect(() => { if (tab === "results") fetchGames(); }, [tab, fetchGames]);
+  useEffect(() => { if (tab === "results" && room) fetchGames(); }, [tab, fetchGames, room]);
 
-  const persistTeams = (list: string[]) => { setTeams(list); localStorage.setItem("sport-teams", JSON.stringify(list)); };
+  // ── Teams: persist to Supabase room ──
+  const persistTeams = useCallback((list: string[]) => {
+    setTeams(list);
+    if (room) updateRoomTeams(room.id, list).catch(() => {});
+  }, [room]);
+
   const addTeam = () => {
     const n = newTeam.trim(); if (!n || teams.includes(n)) return;
     const updated = [...teams, n]; persistTeams(updated); setNewTeam("");
@@ -223,6 +317,7 @@ export default function GamePage() {
   };
   const removeTeam = (n: string) => persistTeams(teams.filter((t) => t !== n));
 
+  // ── Timer ──
   const clearTimer = () => { if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = null; };
   const handleFinish = useCallback(() => { clearTimer(); setRunning(false); setFinished(true); }, []);
   useEffect(() => {
@@ -234,7 +329,11 @@ export default function GamePage() {
     return clearTimer;
   }, [running, handleFinish]);
 
-  const selectPreset = (m: number) => { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setEditingTime(false); setSelectedMinutes(m); setSecondsLeft(m * 60); };
+  const selectPreset = (m: number) => {
+    clearTimer(); setRunning(false); setFinished(false); setSaved(false); setEditingTime(false);
+    setSelectedMinutes(m); setSecondsLeft(m * 60);
+    if (room) updateRoomDuration(room.id, m).catch(() => {});
+  };
   const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); };
   const teamsReady = teams.length > 0 && teams.includes(player1) && teams.includes(player2) && player1 !== player2;
   const handleTimerClick = () => { if (editingTime || finished || !teamsReady) return; setRunning((r) => !r); };
@@ -255,18 +354,27 @@ export default function GamePage() {
     if (seg === "tens") setSecondsLeft(m * 60 + ((ts + (inc ? 1 : 5)) % 6) * 10 + os);
     if (seg === "ones") setSecondsLeft(m * 60 + ts * 10 + (os + (inc ? 1 : 9)) % 10);
   };
-  const [saveError, setSaveError] = useState("");
+
+  // ── Save game scoped to room ──
   const saveGame = async () => {
+    if (!room) return;
     setSaving(true); setSaveError("");
     try {
       const sb = getSupabase();
-      // Delete any existing game between these two teams (either order)
-      await sb.from("games").delete().eq("player1_name", player1).eq("player2_name", player2);
-      await sb.from("games").delete().eq("player1_name", player2).eq("player2_name", player1);
-      // Insert the new/updated result
-      const { error } = await sb.from("games").insert({ player1_name: player1, player2_name: player2, player1_score: score1, player2_score: score2, duration_minutes: selectedMinutes });
+      // Delete any existing game between these two teams in this room
+      await sb.from("games").delete().eq("room_id", room.id).eq("player1_name", player1).eq("player2_name", player2);
+      await sb.from("games").delete().eq("room_id", room.id).eq("player1_name", player2).eq("player2_name", player1);
+      // Insert the new result
+      const { error } = await sb.from("games").insert({
+        player1_name: player1, player2_name: player2,
+        player1_score: score1, player2_score: score2,
+        duration_minutes: selectedMinutes, room_id: room.id,
+      });
       if (error) setSaveError(error.message);
-      else { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+      else {
+        setSaved(true); setTimeout(() => setSaved(false), 2000);
+        touchRoom(room.id).catch(() => {});
+      }
     } catch { setSaveError("Connection failed"); }
     setSaving(false);
   };
@@ -274,19 +382,69 @@ export default function GamePage() {
   const mins = Math.floor(secondsLeft / 60), secs = secondsLeft % 60;
   const timeStr = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   const tenSecs = Math.floor(secs / 10), oneSecs = secs % 10;
-  const progress = secondsLeft / (selectedMinutes * 60);
   const th = T[theme];
   const timerColor = finished ? "#ef4444" : editingTime ? "#eab308" : running ? th.timerRun : th.timerIdle;
   const uniqueGames = dedupeGames(games).filter(g => teams.includes(g.player1_name) && teams.includes(g.player2_name));
   const standings = computeStandings(uniqueGames);
 
+  // ── Loading splash while checking localStorage ──
+  if (checkingStorage) {
+    return <main className={`h-screen w-screen flex items-center justify-center ${th.main}`} />;
+  }
+
+  // ── Room gate screen ──
+  if (!room) {
+    return (
+      <main className={`h-screen w-screen flex items-center justify-center select-none ${th.gate} ${th.cellText}`}>
+        <div className="flex flex-col items-center gap-8 w-[90vw] max-w-sm">
+          <h1 className="text-[2.5vw] font-black tracking-tight" style={{ fontSize: "clamp(1.5rem, 2.5vw, 2rem)" }}>
+            Sport Timer
+          </h1>
+
+          <button onClick={handleCreateRoom} disabled={roomLoading}
+            className={`w-full py-4 rounded-2xl font-bold text-lg transition-colors disabled:opacity-40 ${th.btnPrimary}`}>
+            {roomLoading ? "Creating..." : "Create New Room"}
+          </button>
+
+          <div className="flex items-center gap-3 w-full">
+            <div className={`flex-1 h-px ${th.divider}`} />
+            <span className={`text-sm ${th.gateText}`}>or join with PIN</span>
+            <div className={`flex-1 h-px ${th.divider}`} />
+          </div>
+
+          <div className="flex gap-3 w-full">
+            <input
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
+              placeholder="4-digit PIN"
+              inputMode="numeric"
+              maxLength={4}
+              className={`flex-1 outline-none rounded-xl px-4 py-3 text-center text-lg font-mono tracking-[0.3em] transition-colors ${th.input}`}
+            />
+            <button onClick={handleJoinRoom} disabled={roomLoading || pinInput.length < 4}
+              className={`px-6 py-3 rounded-xl font-bold text-lg transition-colors disabled:opacity-40 ${th.btnPrimary}`}>
+              Join
+            </button>
+          </div>
+
+          {roomError && <p className="text-red-500 text-sm font-medium">{roomError}</p>}
+        </div>
+      </main>
+    );
+  }
+
+  // ── Main app (room active) ──
   return (
     <main className={`h-screen w-screen overflow-hidden select-none flex flex-col ${th.main}`}>
 
       {/* ══════════════════ GAME TAB ══════════════════ */}
       {tab === "game" && (
         <div className="flex-1 relative overflow-hidden">
-          <Link href="/history" className={`absolute top-3 right-4 text-xs transition-colors z-10 ${th.histLink}`}>History →</Link>
+          {/* PIN badge — top-right */}
+          <div className={`absolute top-3 right-4 text-xs z-10 font-mono font-bold ${th.textMuted}`}>
+            PIN {room.pin}
+          </div>
 
           {/* Team 1 — top-left */}
           <div className="absolute top-[4%] left-[4%] flex flex-col gap-[1vh]">
@@ -407,7 +565,7 @@ export default function GamePage() {
             </div>
           </div>
 
-          {/* Right column: Minutes + Theme */}
+          {/* Right column: Minutes + Theme + Room */}
           <div className="w-[38vw] flex flex-col gap-[2vw]">
 
             {/* Minutes panel */}
@@ -442,6 +600,20 @@ export default function GamePage() {
                 ))}
               </div>
             </div>
+
+            {/* Room panel */}
+            <div className={`rounded-2xl p-[2vw] flex flex-col gap-[1.5vh] ${th.panel}`}>
+              <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Room</h2>
+              <div className="flex items-center justify-between">
+                <span className={`text-[1.3vw] ${th.textSec}`}>
+                  PIN: <span className="font-mono font-bold tracking-widest">{room.pin}</span>
+                </span>
+                <button onClick={handleLeaveRoom}
+                  className={`px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.2vw] transition-colors text-red-500 border border-red-500/30 hover:bg-red-500/10`}>
+                  Leave Room
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -449,7 +621,6 @@ export default function GamePage() {
       {/* ══════════════════ RESULTS TAB ══════════════════ */}
       {tab === "results" && (() => {
         const standMap = new Map(standings.map(s => [s.team, s]));
-        // Standings list: sorted by points, then goal diff, then goals for
         const rankedTeams = [...teams].sort((a, b) => {
           const sa = standMap.get(a), sb = standMap.get(b);
           const pa = sa?.points ?? 0, pb = sb?.points ?? 0;
@@ -458,7 +629,6 @@ export default function GamePage() {
           if (db !== da) return db - da;
           return (sb?.gf ?? 0) - (sa?.gf ?? 0);
         });
-        // Cross-reference table: alphabetical
         const alphaTeams = [...teams].sort((a, b) => a.localeCompare(b));
         return (
         <div className="flex-1 flex flex-col p-[2.5vw] gap-[2vh] min-h-0">
@@ -472,7 +642,7 @@ export default function GamePage() {
             <p className={`text-[1.3vw] ${th.textMuted}`}>No teams created yet. Add teams in Settings.</p>
           ) : (
             <>
-              {/* ── Team standings list (centered, no borders, big text) ── */}
+              {/* ── Team standings list ── */}
               <div className="shrink-0 flex justify-center">
                 <div className="w-fit">
                   <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
@@ -493,7 +663,7 @@ export default function GamePage() {
                 </div>
               </div>
 
-              {/* ── Cross-reference matrix (centered, scrollable) ── */}
+              {/* ── Cross-reference matrix ── */}
               <div className="flex-1 overflow-auto min-h-0 flex justify-center">
                 {loadingGames ? (
                   <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
