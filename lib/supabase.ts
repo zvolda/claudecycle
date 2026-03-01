@@ -112,7 +112,8 @@ export async function updateRoomGroupSettings(roomId: string, twoGroups: boolean
 /** Push current match state to the room for live viewers. */
 export async function updateCurrentMatch(roomId: string, match: CurrentMatch | null): Promise<void> {
   const sb = getSupabase();
-  await sb.from("rooms").update({ current_match: match }).eq("id", roomId);
+  const { error } = await sb.from("rooms").update({ current_match: match }).eq("id", roomId);
+  if (error) console.error("updateCurrentMatch failed:", error.message);
 }
 
 /** Fetch a room by ID (for polling). */

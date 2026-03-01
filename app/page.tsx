@@ -577,7 +577,7 @@ export default function GamePage() {
       seconds_left: overrides?.sl ?? secondsLeft,
       updated_at: new Date().toISOString(),
     };
-    updateCurrentMatch(room.id, match).catch(() => {});
+    updateCurrentMatch(room.id, match).catch((err) => console.error("pushMatchState error:", err));
   }, [room, player1, player2, score1, score2, half, running, finished, selectedMinutes, secondsLeft]);
 
   // ── Timer ──
@@ -680,6 +680,7 @@ export default function GamePage() {
         setViewGames(games);
       }
     };
+    poll(); // immediate first fetch
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [viewingRoom?.id, room]); // eslint-disable-line react-hooks/exhaustive-deps
