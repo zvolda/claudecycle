@@ -17,6 +17,7 @@ export function getSupabase(): SupabaseClient {
 export type Room = {
   id: string;
   pin: string;
+  name: string;
   teams: string[];
   duration_minutes: number;
   last_active_at: string;
@@ -78,6 +79,13 @@ export async function updateRoomDuration(roomId: string, minutes: number): Promi
   if (error) throw new Error(error.message);
 }
 
+/** Update the tournament name for a room. */
+export async function updateRoomName(roomId: string, name: string): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from("rooms").update({ name }).eq("id", roomId);
+  if (error) throw new Error(error.message);
+}
+
 /** Bump last_active_at so the room doesn't auto-expire. */
 export async function touchRoom(roomId: string): Promise<void> {
   const sb = getSupabase();
@@ -94,4 +102,16 @@ export async function fetchRoomGames(roomId: string): Promise<Game[]> {
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as Game[];
+}
+
+/** Fetch all rooms that have a name, ordered by most recently active. */
+export async function fetchAllRooms(): Promise<Room[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("rooms")
+    .select("*")
+    .neq("name", "")
+    .order("last_active_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Room[];
 }

@@ -9,8 +9,10 @@ import {
   joinRoom,
   updateRoomTeams,
   updateRoomDuration,
+  updateRoomName,
   touchRoom,
   fetchRoomGames,
+  fetchAllRooms,
 } from "@/lib/supabase";
 
 const PRESETS = [5, 6, 7];
@@ -57,6 +59,7 @@ const T = {
     gate:        "bg-black",
     gateBorder:  "border-zinc-800",
     gateText:    "text-zinc-400",
+    listItem:    "bg-zinc-950 border border-zinc-800 hover:border-zinc-600",
   },
   light: {
     main:        "bg-white text-black",
@@ -95,6 +98,7 @@ const T = {
     gate:        "bg-white",
     gateBorder:  "border-zinc-300",
     gateText:    "text-zinc-500",
+    listItem:    "bg-zinc-50 border border-zinc-200 hover:border-zinc-400",
   },
   color: {
     main:        "bg-gray-950 text-white",
@@ -133,6 +137,7 @@ const T = {
     gate:        "bg-gray-950",
     gateBorder:  "border-gray-800",
     gateText:    "text-gray-500",
+    listItem:    "bg-gray-900 border border-gray-800 hover:border-gray-600",
   },
 } as const;
 
@@ -166,7 +171,7 @@ function dedupeGames(games: Game[]): Game[] {
   const seen = new Map<string, Game>();
   for (const g of games) {
     const key = [g.player1_name, g.player2_name].sort().join("\0");
-    if (!seen.has(key)) seen.set(key, g); // games already sorted by created_at desc
+    if (!seen.has(key)) seen.set(key, g);
   }
   return Array.from(seen.values());
 }
@@ -180,6 +185,100 @@ function getMatchResult(games: Game[], teamA: string, teamB: string): string | n
   return null;
 }
 
+// ── Results view (shared between main app and read-only view) ────────────────
+function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError }: {
+  teams: string[];
+  games: Game[];
+  th: typeof T[ThemeKey];
+  fetchGames?: () => void;
+  loadingGames: boolean;
+  fetchError: string;
+}) {
+  const uniqueGames = dedupeGames(games).filter(g => teams.includes(g.player1_name) && teams.includes(g.player2_name));
+  const standings = computeStandings(uniqueGames);
+  const standMap = new Map(standings.map(s => [s.team, s]));
+  const rankedTeams = [...teams].sort((a, b) => {
+    const sa = standMap.get(a), sb = standMap.get(b);
+    const pa = sa?.points ?? 0, pb = sb?.points ?? 0;
+    if (pb !== pa) return pb - pa;
+    const da = (sa?.gf ?? 0) - (sa?.ga ?? 0), db = (sb?.gf ?? 0) - (sb?.ga ?? 0);
+    if (db !== da) return db - da;
+    return (sb?.gf ?? 0) - (sa?.gf ?? 0);
+  });
+  const alphaTeams = [...teams].sort((a, b) => a.localeCompare(b));
+
+  return (
+    <div className="flex-1 flex flex-col p-[2.5vw] gap-[2vh] min-h-0">
+      <div className="flex items-center justify-between shrink-0">
+        <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Results</h2>
+        {fetchGames && (
+          <button onClick={fetchGames} className={`text-[1.1vw] transition-colors px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
+        )}
+      </div>
+
+      {fetchError && <p className="text-[1.2vw] text-red-500 shrink-0">{fetchError}</p>}
+      {teams.length === 0 ? (
+        <p className={`text-[1.3vw] ${th.textMuted}`}>No teams created yet.</p>
+      ) : (
+        <>
+          <div className="shrink-0 flex justify-center">
+            <div className="w-fit">
+              <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
+                <span className="w-[20vw]">Team</span>
+                <span className="w-[5vw] text-center">Points</span>
+                <span className="w-[6vw] text-center">Score</span>
+              </div>
+              {rankedTeams.map((team) => {
+                const st = standMap.get(team);
+                return (
+                  <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
+                    <span className="w-[20vw] font-semibold">{team}</span>
+                    <span className="w-[5vw] text-center font-black">{st?.points ?? 0}</span>
+                    <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-auto min-h-0 flex justify-center">
+            {loadingGames ? (
+              <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
+            ) : (
+            <table className={`border-collapse text-[1.1vw] ${th.cellText} h-fit`}>
+              <thead>
+                <tr>
+                  <th className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-bold`}></th>
+                  {alphaTeams.map((t, i) => (
+                    <th key={i} className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-center font-bold min-w-[3.5vw]`}>{i + 1}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {alphaTeams.map((team, ri) => (
+                  <tr key={team}>
+                    <td className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
+                    {alphaTeams.map((opp, ci) => {
+                      if (ri === ci) return <td key={ci} className={`border ${th.cellBorder} ${th.cellDiag}`} />;
+                      const result = getMatchResult(uniqueGames, team, opp);
+                      return (
+                        <td key={ci} className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap ${result ? "" : th.cellEmpty}`}>
+                          {result ?? ""}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function GamePage() {
   const [theme, setTheme] = useState<ThemeKey>("dark");
@@ -190,6 +289,15 @@ export default function GamePage() {
   const [roomLoading, setRoomLoading] = useState(false);
   const [roomError, setRoomError] = useState("");
   const [checkingStorage, setCheckingStorage] = useState(true);
+  const [showPin, setShowPin] = useState(false);
+  const [tournamentName, setTournamentName] = useState("");
+
+  // Gate screen: public tournament list + read-only view
+  const [allRooms, setAllRooms] = useState<Room[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+  const [viewingRoom, setViewingRoom] = useState<Room | null>(null);
+  const [viewGames, setViewGames] = useState<Game[]>([]);
+  const [viewLoading, setViewLoading] = useState(false);
 
   // Game state
   const [teams, setTeams] = useState<string[]>([]);
@@ -224,6 +332,7 @@ export default function GamePage() {
         if (r) {
           setRoom(r);
           setTeams(r.teams);
+          setTournamentName(r.name);
           setSelectedMinutes(r.duration_minutes);
           setSecondsLeft(r.duration_minutes * 60);
           if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
@@ -240,6 +349,20 @@ export default function GamePage() {
     }
   }, []);
 
+  // ── Fetch public tournament list when on gate screen ──
+  const loadTournaments = useCallback(async () => {
+    setLoadingRooms(true);
+    try {
+      const rooms = await fetchAllRooms();
+      setAllRooms(rooms);
+    } catch { setAllRooms([]); }
+    setLoadingRooms(false);
+  }, []);
+
+  useEffect(() => {
+    if (!room && !checkingStorage) loadTournaments();
+  }, [room, checkingStorage, loadTournaments]);
+
   const changeTheme = (t: ThemeKey) => {
     setTheme(t);
     localStorage.setItem("sport-theme", t);
@@ -253,6 +376,7 @@ export default function GamePage() {
       localStorage.setItem(STORAGE_PIN_KEY, r.pin);
       setRoom(r);
       setTeams(r.teams);
+      setTournamentName(r.name);
       setSelectedMinutes(r.duration_minutes);
       setSecondsLeft(r.duration_minutes * 60);
     } catch (e) {
@@ -271,6 +395,7 @@ export default function GamePage() {
       localStorage.setItem(STORAGE_PIN_KEY, r.pin);
       setRoom(r);
       setTeams(r.teams);
+      setTournamentName(r.name);
       setSelectedMinutes(r.duration_minutes);
       setSecondsLeft(r.duration_minutes * 60);
       if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
@@ -289,6 +414,19 @@ export default function GamePage() {
     setScore1(0); setScore2(0);
     setGames([]);
     setTab("game");
+    setShowPin(false);
+    setTournamentName("");
+  };
+
+  // ── View a tournament read-only ──
+  const handleViewTournament = async (r: Room) => {
+    setViewingRoom(r);
+    setViewLoading(true);
+    try {
+      const data = await fetchRoomGames(r.id);
+      setViewGames(data);
+    } catch { setViewGames([]); }
+    setViewLoading(false);
   };
 
   // ── Fetch games scoped to room ──
@@ -316,6 +454,11 @@ export default function GamePage() {
     if (updated.length === 2) setPlayer2(n);
   };
   const removeTeam = (n: string) => persistTeams(teams.filter((t) => t !== n));
+
+  // ── Tournament name ──
+  const saveTournamentName = () => {
+    if (room) updateRoomName(room.id, tournamentName.trim()).catch(() => {});
+  };
 
   // ── Timer ──
   const clearTimer = () => { if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = null; };
@@ -361,10 +504,8 @@ export default function GamePage() {
     setSaving(true); setSaveError("");
     try {
       const sb = getSupabase();
-      // Delete any existing game between these two teams in this room
       await sb.from("games").delete().eq("room_id", room.id).eq("player1_name", player1).eq("player2_name", player2);
       await sb.from("games").delete().eq("room_id", room.id).eq("player1_name", player2).eq("player2_name", player1);
-      // Insert the new result
       const { error } = await sb.from("games").insert({
         player1_name: player1, player2_name: player2,
         player1_score: score1, player2_score: score2,
@@ -384,20 +525,40 @@ export default function GamePage() {
   const tenSecs = Math.floor(secs / 10), oneSecs = secs % 10;
   const th = T[theme];
   const timerColor = finished ? "#ef4444" : editingTime ? "#eab308" : running ? th.timerRun : th.timerIdle;
-  const uniqueGames = dedupeGames(games).filter(g => teams.includes(g.player1_name) && teams.includes(g.player2_name));
-  const standings = computeStandings(uniqueGames);
 
   // ── Loading splash while checking localStorage ──
   if (checkingStorage) {
     return <main className={`h-screen w-screen flex items-center justify-center ${th.main}`} />;
   }
 
+  // ── Read-only tournament view ──
+  if (viewingRoom && !room) {
+    return (
+      <main className={`h-screen w-screen overflow-hidden select-none flex flex-col ${th.main}`}>
+        <div className="flex items-center gap-4 px-[2.5vw] pt-[2vw] shrink-0">
+          <button onClick={() => { setViewingRoom(null); setViewGames([]); }}
+            className={`text-[1.3vw] transition-colors px-[1.5vw] py-[0.8vh] rounded-xl ${th.btnSecondary}`}>
+            ← Back
+          </button>
+          <h1 className={`text-[2vw] font-bold ${th.textPrimary}`}>{viewingRoom.name || "Unnamed Tournament"}</h1>
+        </div>
+        <ResultsView
+          teams={viewingRoom.teams}
+          games={viewGames}
+          th={th}
+          loadingGames={viewLoading}
+          fetchError=""
+        />
+      </main>
+    );
+  }
+
   // ── Room gate screen ──
   if (!room) {
     return (
-      <main className={`h-screen w-screen flex items-center justify-center select-none ${th.gate} ${th.cellText}`}>
-        <div className="flex flex-col items-center gap-8 w-[90vw] max-w-sm">
-          <h1 className="text-[2.5vw] font-black tracking-tight" style={{ fontSize: "clamp(1.5rem, 2.5vw, 2rem)" }}>
+      <main className={`h-screen w-screen flex flex-col items-center select-none overflow-auto ${th.gate} ${th.cellText}`}>
+        <div className="flex flex-col items-center gap-8 w-[90vw] max-w-sm pt-[8vh]">
+          <h1 className="font-black tracking-tight" style={{ fontSize: "clamp(1.5rem, 2.5vw, 2rem)" }}>
             Sport Timer
           </h1>
 
@@ -430,6 +591,30 @@ export default function GamePage() {
 
           {roomError && <p className="text-red-500 text-sm font-medium">{roomError}</p>}
         </div>
+
+        {/* Public tournament list */}
+        <div className="w-[90vw] max-w-lg mt-10 pb-10">
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`flex-1 h-px ${th.divider}`} />
+            <span className={`text-sm font-semibold ${th.gateText}`}>Tournaments</span>
+            <div className={`flex-1 h-px ${th.divider}`} />
+          </div>
+          {loadingRooms ? (
+            <p className={`text-sm text-center ${th.gateText}`}>Loading...</p>
+          ) : allRooms.length === 0 ? (
+            <p className={`text-sm text-center ${th.gateText}`}>No tournaments yet.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {allRooms.map((r) => (
+                <button key={r.id} onClick={() => handleViewTournament(r)}
+                  className={`w-full text-left rounded-xl px-4 py-3 transition-colors ${th.listItem}`}>
+                  <span className="font-semibold">{r.name}</span>
+                  <span className={`ml-2 text-sm ${th.gateText}`}>{r.teams.length} teams</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     );
   }
@@ -441,14 +626,10 @@ export default function GamePage() {
       {/* ══════════════════ GAME TAB ══════════════════ */}
       {tab === "game" && (
         <div className="flex-1 relative overflow-hidden">
-          {/* PIN badge — top-right */}
-          <div className={`absolute top-3 right-4 text-xs z-10 font-mono font-bold ${th.textMuted}`}>
-            PIN {room.pin}
-          </div>
 
           {/* Team 1 — top-left */}
           <div className="absolute top-[4%] left-[4%] flex flex-col gap-[1vh]">
-            <span className={`font-bold text-[3.5vw] w-[18vw] truncate ${th.textPrimary}`}>{player1}</span>
+            <span className={`font-bold text-[3.5vw] max-w-[22vw] truncate ${th.textPrimary}`}>{player1}</span>
             <div className={`w-[18vw] h-[34vh] rounded-xl flex items-center justify-center cursor-pointer transition-colors ${th.scoreBox}`}
               onClick={(e) => handleScoreClick(setScore1, e)} onContextMenu={(e) => handleScoreClick(setScore1, e)}
               title="Left click +1 · Right click −1">
@@ -458,7 +639,7 @@ export default function GamePage() {
 
           {/* Team 2 — top-right */}
           <div className="absolute top-[4%] right-[4%] flex flex-col gap-[1vh] items-end">
-            <span className={`font-bold text-[3.5vw] w-[18vw] truncate text-right ${th.textPrimary}`}>{player2}</span>
+            <span className={`font-bold text-[3.5vw] max-w-[22vw] truncate text-right ${th.textPrimary}`}>{player2}</span>
             <div className={`w-[18vw] h-[34vh] rounded-xl flex items-center justify-center cursor-pointer transition-colors ${th.scoreBox}`}
               onClick={(e) => handleScoreClick(setScore2, e)} onContextMenu={(e) => handleScoreClick(setScore2, e)}
               title="Left click +1 · Right click −1">
@@ -471,13 +652,13 @@ export default function GamePage() {
             <span className={`text-[3vw] font-bold ${th.textMuted}`}>{half === 1 ? "1st" : "2nd"}</span>
           </div>
 
-          {/* Timer — framed like score boxes */}
+          {/* Timer */}
           <div onClick={handleTimerClick}
             className={`absolute rounded-xl flex flex-col items-center justify-center ${th.timerBox}`}
             style={{ left: "24%", right: "24%", top: "35%", bottom: "11%", cursor: editingTime || finished ? "default" : "pointer" }}>
 
             {editingTime ? (
-              <div className="flex items-baseline font-mono font-black tabular-nums leading-none" style={{ fontSize: "clamp(3rem, 20vw, 26rem)" }}>
+              <div className="flex items-baseline font-mono font-black tabular-nums leading-none" style={{ fontSize: "clamp(3rem, 15vw, 18rem)" }}>
                 {(["min", "tens", "ones"] as const).map((seg, i) => (
                   <span key={seg}>
                     {i === 1 && <span style={{ color: timerColor }} className="mx-[0.2vw]">:</span>}
@@ -491,7 +672,7 @@ export default function GamePage() {
                 ))}
               </div>
             ) : (
-              <span className="font-mono font-black tabular-nums leading-none" style={{ fontSize: "clamp(3rem, 20vw, 26rem)", color: timerColor }}>
+              <span className="font-mono font-black tabular-nums leading-none" style={{ fontSize: "clamp(3rem, 15vw, 18rem)", color: timerColor }}>
                 {timeStr}
               </span>
             )}
@@ -506,7 +687,7 @@ export default function GamePage() {
           </div>
 
           {/* Bottom controls */}
-          <div className="absolute bottom-[1.5%] left-1/2 -translate-x-1/2 flex items-center gap-[1.5vw]">
+          <div className="absolute bottom-[1.5%] left-1/2 -translate-x-1/2 flex flex-nowrap items-center gap-[1.5vw]">
             {teams.length > 0 ? (
               <>
                 <select value={player1} onChange={(e) => setPlayer1(e.target.value)} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
@@ -523,16 +704,16 @@ export default function GamePage() {
             <div className={`w-px h-[3vh] ${th.divider}`} />
             {!running && (
               <button onClick={() => setEditingTime((e) => !e)}
-                className={`px-[2vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] transition-colors ${editingTime ? "bg-yellow-400 text-black hover:bg-yellow-300 border border-yellow-400" : th.btnSecondary}`}>
+                className={`px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] transition-colors whitespace-nowrap ${editingTime ? "bg-yellow-400 text-black hover:bg-yellow-300 border border-yellow-400" : th.btnSecondary}`}>
                 {editingTime ? "Done" : "Set Time"}
               </button>
             )}
             {saveError ? (
-              <span className="font-semibold text-[1.2vw] text-red-500">{saveError}</span>
+              <span className="font-semibold text-[1.2vw] text-red-500 whitespace-nowrap">{saveError}</span>
             ) : saved ? (
-              <span className={`font-semibold text-[1.2vw] ${th.saved}`}>✓ Saved</span>
+              <span className={`font-semibold text-[1.2vw] whitespace-nowrap ${th.saved}`}>✓ Saved</span>
             ) : (
-              <button onClick={saveGame} disabled={saving} className={`px-[2vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] transition-colors disabled:opacity-40 ${th.btnPrimary}`}>
+              <button onClick={saveGame} disabled={saving} className={`px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] transition-colors disabled:opacity-40 whitespace-nowrap ${th.btnPrimary}`}>
                 {saving ? "Saving..." : "Save Game"}
               </button>
             )}
@@ -565,7 +746,7 @@ export default function GamePage() {
             </div>
           </div>
 
-          {/* Right column: Minutes + Theme + Room */}
+          {/* Right column */}
           <div className="w-[38vw] flex flex-col gap-[2vw]">
 
             {/* Minutes panel */}
@@ -604,12 +785,28 @@ export default function GamePage() {
             {/* Room panel */}
             <div className={`rounded-2xl p-[2vw] flex flex-col gap-[1.5vh] ${th.panel}`}>
               <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Room</h2>
+              <div className="flex gap-[1vw]">
+                <input
+                  value={tournamentName}
+                  onChange={(e) => setTournamentName(e.target.value)}
+                  onBlur={saveTournamentName}
+                  onKeyDown={(e) => { if (e.key === "Enter") { saveTournamentName(); (e.target as HTMLInputElement).blur(); } }}
+                  placeholder="Tournament name..."
+                  className={`flex-1 outline-none rounded-xl px-[1.2vw] py-[1vh] text-[1.3vw] transition-colors ${th.input}`}
+                />
+              </div>
               <div className="flex items-center justify-between">
-                <span className={`text-[1.3vw] ${th.textSec}`}>
-                  PIN: <span className="font-mono font-bold tracking-widest">{room.pin}</span>
+                <span className={`text-[1.3vw] flex items-center gap-[0.5vw] ${th.textSec}`}>
+                  PIN:
+                  <span className="font-mono font-bold tracking-widest">{showPin ? room.pin : "••••"}</span>
+                  <button onClick={() => setShowPin((s) => !s)}
+                    className={`text-[1.2vw] leading-none transition-colors ${th.textMuted} hover:${th.textPrimary}`}
+                    title={showPin ? "Hide PIN" : "Show PIN"}>
+                    {showPin ? "🙈" : "👁"}
+                  </button>
                 </span>
                 <button onClick={handleLeaveRoom}
-                  className={`px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.2vw] transition-colors text-red-500 border border-red-500/30 hover:bg-red-500/10`}>
+                  className="px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.2vw] transition-colors text-red-500 border border-red-500/30 hover:bg-red-500/10">
                   Leave Room
                 </button>
               </div>
@@ -619,88 +816,16 @@ export default function GamePage() {
       )}
 
       {/* ══════════════════ RESULTS TAB ══════════════════ */}
-      {tab === "results" && (() => {
-        const standMap = new Map(standings.map(s => [s.team, s]));
-        const rankedTeams = [...teams].sort((a, b) => {
-          const sa = standMap.get(a), sb = standMap.get(b);
-          const pa = sa?.points ?? 0, pb = sb?.points ?? 0;
-          if (pb !== pa) return pb - pa;
-          const da = (sa?.gf ?? 0) - (sa?.ga ?? 0), db = (sb?.gf ?? 0) - (sb?.ga ?? 0);
-          if (db !== da) return db - da;
-          return (sb?.gf ?? 0) - (sa?.gf ?? 0);
-        });
-        const alphaTeams = [...teams].sort((a, b) => a.localeCompare(b));
-        return (
-        <div className="flex-1 flex flex-col p-[2.5vw] gap-[2vh] min-h-0">
-          <div className="flex items-center justify-between shrink-0">
-            <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Results</h2>
-            <button onClick={fetchGames} className={`text-[1.1vw] transition-colors px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
-          </div>
-
-          {fetchError && <p className="text-[1.2vw] text-red-500 shrink-0">{fetchError}</p>}
-          {teams.length === 0 ? (
-            <p className={`text-[1.3vw] ${th.textMuted}`}>No teams created yet. Add teams in Settings.</p>
-          ) : (
-            <>
-              {/* ── Team standings list ── */}
-              <div className="shrink-0 flex justify-center">
-                <div className="w-fit">
-                  <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
-                    <span className="w-[20vw]">Team</span>
-                    <span className="w-[5vw] text-center">Points</span>
-                    <span className="w-[6vw] text-center">Score</span>
-                  </div>
-                  {rankedTeams.map((team) => {
-                    const st = standMap.get(team);
-                    return (
-                      <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
-                        <span className="w-[20vw] font-semibold">{team}</span>
-                        <span className="w-[5vw] text-center font-black">{st?.points ?? 0}</span>
-                        <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ── Cross-reference matrix ── */}
-              <div className="flex-1 overflow-auto min-h-0 flex justify-center">
-                {loadingGames ? (
-                  <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
-                ) : (
-                <table className={`border-collapse text-[1.1vw] ${th.cellText} h-fit`}>
-                  <thead>
-                    <tr>
-                      <th className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-bold`}></th>
-                      {alphaTeams.map((t, i) => (
-                        <th key={i} className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-center font-bold min-w-[3.5vw]`}>{i + 1}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alphaTeams.map((team, ri) => (
-                      <tr key={team}>
-                        <td className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
-                        {alphaTeams.map((opp, ci) => {
-                          if (ri === ci) return <td key={ci} className={`border ${th.cellBorder} ${th.cellDiag}`} />;
-                          const result = getMatchResult(uniqueGames, team, opp);
-                          return (
-                            <td key={ci} className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap ${result ? "" : th.cellEmpty}`}>
-                              {result ?? ""}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        );
-      })()}
+      {tab === "results" && (
+        <ResultsView
+          teams={teams}
+          games={games}
+          th={th}
+          fetchGames={fetchGames}
+          loadingGames={loadingGames}
+          fetchError={fetchError}
+        />
+      )}
 
       {/* ══════════════════ TAB BAR ══════════════════ */}
       <div className={`flex shrink-0 ${th.tabBar}`}>
