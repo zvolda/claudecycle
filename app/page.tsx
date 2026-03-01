@@ -669,11 +669,6 @@ export default function GamePage() {
   const th = T[theme];
   const timerColor = finished ? "#ef4444" : editingTime ? "#eab308" : running ? th.timerRun : th.timerIdle;
 
-  // ── Loading splash while checking localStorage ──
-  if (checkingStorage) {
-    return <main className={`h-screen w-screen flex items-center justify-center ${th.main}`} />;
-  }
-
   // ── Poll read-only view for live updates ──
   useEffect(() => {
     if (!viewingRoom || room) return;
@@ -688,6 +683,11 @@ export default function GamePage() {
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [viewingRoom?.id, room]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Loading splash while checking localStorage ──
+  if (checkingStorage) {
+    return <main className={`h-screen w-screen flex items-center justify-center ${th.main}`} />;
+  }
 
   // ── Read-only tournament view ──
   if (viewingRoom && !room) {
