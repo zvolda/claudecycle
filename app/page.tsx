@@ -648,7 +648,7 @@ export default function GamePage() {
           </div>
 
           {/* Half indicator */}
-          <div className="absolute flex justify-center" style={{ left: "24%", right: "24%", top: "28%" }}>
+          <div className="absolute flex justify-center" style={{ left: "24%", right: "24%", top: "22%" }}>
             <span className={`text-[3vw] font-bold ${th.textMuted}`}>{half === 1 ? "1st" : "2nd"}</span>
           </div>
 
