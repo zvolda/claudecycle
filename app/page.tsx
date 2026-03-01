@@ -10,6 +10,7 @@ import {
   updateRoomTeams,
   updateRoomDuration,
   updateRoomName,
+  updateRoomGroupSettings,
   touchRoom,
   fetchRoomGames,
   fetchAllRooms,
@@ -185,14 +186,13 @@ function getMatchResult(games: Game[], teamA: string, teamB: string): string | n
   return null;
 }
 
-// ── Results view (shared between main app and read-only view) ────────────────
-function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError }: {
+// ── Group standings + matrix block ───────────────────────────────────────────
+function GroupBlock({ label, teams, games, th, loadingGames }: {
+  label?: string;
   teams: string[];
   games: Game[];
   th: typeof T[ThemeKey];
-  fetchGames?: () => void;
   loadingGames: boolean;
-  fetchError: string;
 }) {
   const uniqueGames = dedupeGames(games).filter(g => teams.includes(g.player1_name) && teams.includes(g.player2_name));
   const standings = computeStandings(uniqueGames);
@@ -208,7 +208,80 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError }:
   const alphaTeams = [...teams].sort((a, b) => a.localeCompare(b));
 
   return (
-    <div className="flex-1 flex flex-col p-[2.5vw] gap-[2vh] min-h-0">
+    <>
+      {label && <h3 className={`text-[1.5vw] font-bold shrink-0 ${th.textPrimary}`}>{label}</h3>}
+      <div className="shrink-0 flex justify-center">
+        <div className="w-fit">
+          <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
+            <span className="w-[20vw]">Team</span>
+            <span className="w-[5vw] text-center">Points</span>
+            <span className="w-[6vw] text-center">Score</span>
+          </div>
+          {rankedTeams.map((team) => {
+            const st = standMap.get(team);
+            return (
+              <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
+                <span className="w-[20vw] font-semibold">{team}</span>
+                <span className="w-[5vw] text-center font-black">{st?.points ?? 0}</span>
+                <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="overflow-auto flex justify-center">
+        {loadingGames ? (
+          <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
+        ) : (
+        <table className={`border-collapse text-[1.1vw] ${th.cellText} h-fit`}>
+          <thead>
+            <tr>
+              <th className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-bold`}></th>
+              {alphaTeams.map((t, i) => (
+                <th key={i} className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-center font-bold min-w-[3.5vw]`}>{i + 1}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {alphaTeams.map((team, ri) => (
+              <tr key={team}>
+                <td className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
+                {alphaTeams.map((opp, ci) => {
+                  if (ri === ci) return <td key={ci} className={`border ${th.cellBorder} ${th.cellDiag}`} />;
+                  const result = getMatchResult(uniqueGames, team, opp);
+                  return (
+                    <td key={ci} className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap ${result ? "" : th.cellEmpty}`}>
+                      {result ?? ""}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Results view (shared between main app and read-only view) ────────────────
+function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups }: {
+  teams: string[];
+  games: Game[];
+  th: typeof T[ThemeKey];
+  fetchGames?: () => void;
+  loadingGames: boolean;
+  fetchError: string;
+  twoGroups?: boolean;
+  teamGroups?: Record<string, string>;
+}) {
+  const groupA = twoGroups ? teams.filter(t => (teamGroups?.[t] ?? "A") === "A") : [];
+  const groupB = twoGroups ? teams.filter(t => teamGroups?.[t] === "B") : [];
+
+  return (
+    <div className="flex-1 flex flex-col p-[2.5vw] gap-[2vh] min-h-0 overflow-auto">
       <div className="flex items-center justify-between shrink-0">
         <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Results</h2>
         {fetchGames && (
@@ -219,61 +292,20 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError }:
       {fetchError && <p className="text-[1.2vw] text-red-500 shrink-0">{fetchError}</p>}
       {teams.length === 0 ? (
         <p className={`text-[1.3vw] ${th.textMuted}`}>No teams created yet.</p>
-      ) : (
+      ) : twoGroups ? (
         <>
-          <div className="shrink-0 flex justify-center">
-            <div className="w-fit">
-              <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
-                <span className="w-[20vw]">Team</span>
-                <span className="w-[5vw] text-center">Points</span>
-                <span className="w-[6vw] text-center">Score</span>
-              </div>
-              {rankedTeams.map((team) => {
-                const st = standMap.get(team);
-                return (
-                  <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
-                    <span className="w-[20vw] font-semibold">{team}</span>
-                    <span className="w-[5vw] text-center font-black">{st?.points ?? 0}</span>
-                    <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-auto min-h-0 flex justify-center">
-            {loadingGames ? (
-              <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
-            ) : (
-            <table className={`border-collapse text-[1.1vw] ${th.cellText} h-fit`}>
-              <thead>
-                <tr>
-                  <th className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-bold`}></th>
-                  {alphaTeams.map((t, i) => (
-                    <th key={i} className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-center font-bold min-w-[3.5vw]`}>{i + 1}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {alphaTeams.map((team, ri) => (
-                  <tr key={team}>
-                    <td className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
-                    {alphaTeams.map((opp, ci) => {
-                      if (ri === ci) return <td key={ci} className={`border ${th.cellBorder} ${th.cellDiag}`} />;
-                      const result = getMatchResult(uniqueGames, team, opp);
-                      return (
-                        <td key={ci} className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap ${result ? "" : th.cellEmpty}`}>
-                          {result ?? ""}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            )}
-          </div>
+          {groupA.length > 0 && (
+            <GroupBlock label="Group A" teams={groupA} games={games} th={th} loadingGames={loadingGames} />
+          )}
+          {groupB.length > 0 && (
+            <GroupBlock label="Group B" teams={groupB} games={games} th={th} loadingGames={loadingGames} />
+          )}
+          {groupA.length === 0 && groupB.length === 0 && (
+            <p className={`text-[1.3vw] ${th.textMuted}`}>No teams assigned to groups yet.</p>
+          )}
         </>
+      ) : (
+        <GroupBlock teams={teams} games={games} th={th} loadingGames={loadingGames} />
       )}
     </div>
   );
@@ -291,6 +323,8 @@ export default function GamePage() {
   const [checkingStorage, setCheckingStorage] = useState(true);
   const [showPin, setShowPin] = useState(false);
   const [tournamentName, setTournamentName] = useState("");
+  const [twoGroups, setTwoGroups] = useState(false);
+  const [teamGroups, setTeamGroups] = useState<Record<string, string>>({});
 
   // Gate screen: public tournament list + read-only view
   const [allRooms, setAllRooms] = useState<Room[]>([]);
@@ -306,8 +340,8 @@ export default function GamePage() {
   const [player2, setPlayer2] = useState("");
   const [score1, setScore1] = useState(0);
   const [score2, setScore2] = useState(0);
-  const [selectedMinutes, setSelectedMinutes] = useState(5);
-  const [secondsLeft, setSecondsLeft] = useState(5 * 60);
+  const [selectedMinutes, setSelectedMinutes] = useState(7);
+  const [secondsLeft, setSecondsLeft] = useState(7 * 60);
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -333,6 +367,8 @@ export default function GamePage() {
           setRoom(r);
           setTeams(r.teams);
           setTournamentName(r.name);
+          setTwoGroups(r.two_groups);
+          setTeamGroups(r.team_groups ?? {});
           setSelectedMinutes(r.duration_minutes);
           setSecondsLeft(r.duration_minutes * 60);
           if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
@@ -377,6 +413,8 @@ export default function GamePage() {
       setRoom(r);
       setTeams(r.teams);
       setTournamentName(r.name);
+      setTwoGroups(r.two_groups);
+      setTeamGroups(r.team_groups ?? {});
       setSelectedMinutes(r.duration_minutes);
       setSecondsLeft(r.duration_minutes * 60);
     } catch (e) {
@@ -396,6 +434,8 @@ export default function GamePage() {
       setRoom(r);
       setTeams(r.teams);
       setTournamentName(r.name);
+      setTwoGroups(r.two_groups);
+      setTeamGroups(r.team_groups ?? {});
       setSelectedMinutes(r.duration_minutes);
       setSecondsLeft(r.duration_minutes * 60);
       if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
@@ -416,6 +456,8 @@ export default function GamePage() {
     setTab("game");
     setShowPin(false);
     setTournamentName("");
+    setTwoGroups(false);
+    setTeamGroups({});
   };
 
   // ── View a tournament read-only ──
@@ -452,12 +494,25 @@ export default function GamePage() {
     const updated = [...teams, n]; persistTeams(updated); setNewTeam("");
     if (updated.length === 1) setPlayer1(n);
     if (updated.length === 2) setPlayer2(n);
+    if (twoGroups) persistGroupSettings(twoGroups, { ...teamGroups, [n]: "A" });
   };
   const removeTeam = (n: string) => persistTeams(teams.filter((t) => t !== n));
 
   // ── Tournament name ──
   const saveTournamentName = () => {
     if (room) updateRoomName(room.id, tournamentName.trim()).catch(() => {});
+  };
+
+  // ── Group settings ──
+  const persistGroupSettings = (tg: boolean, groups: Record<string, string>) => {
+    setTwoGroups(tg);
+    setTeamGroups(groups);
+    if (room) updateRoomGroupSettings(room.id, tg, groups).catch(() => {});
+  };
+  const toggleTeamGroup = (teamName: string) => {
+    const current = teamGroups[teamName] ?? "A";
+    const next = current === "A" ? "B" : "A";
+    persistGroupSettings(twoGroups, { ...teamGroups, [teamName]: next });
   };
 
   // ── Timer ──
@@ -548,6 +603,8 @@ export default function GamePage() {
           th={th}
           loadingGames={viewLoading}
           fetchError=""
+          twoGroups={viewingRoom.two_groups}
+          teamGroups={viewingRoom.team_groups}
         />
       </main>
     );
@@ -727,7 +784,13 @@ export default function GamePage() {
 
           {/* Teams panel */}
           <div className={`flex-1 rounded-2xl p-[2vw] flex flex-col gap-[1.5vh] min-h-0 ${th.panel}`}>
-            <h2 className={`text-[1.8vw] font-bold shrink-0 ${th.textPrimary}`}>Teams</h2>
+            <div className="flex items-center justify-between shrink-0">
+              <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Teams</h2>
+              <button onClick={() => persistGroupSettings(!twoGroups, teamGroups)}
+                className={`px-[1.2vw] py-[0.5vh] rounded-xl font-bold text-[1.1vw] transition-colors ${twoGroups ? th.presetOn : th.presetOff}`}>
+                Two Groups
+              </button>
+            </div>
             <div className="flex gap-[1vw] shrink-0">
               <input value={newTeam} onChange={(e) => setNewTeam(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTeam()}
                 placeholder="Enter team name..."
@@ -739,7 +802,15 @@ export default function GamePage() {
                 <p className={`text-[1.3vw] mt-[1vh] ${th.textMuted}`}>No teams yet — add one above.</p>
               ) : teams.map((t) => (
                 <div key={t} className={`flex items-center justify-between rounded-xl px-[1.5vw] py-[1.2vh] ${th.inner}`}>
-                  <span className={`text-[1.5vw] font-semibold ${th.textPrimary}`}>{t}</span>
+                  <div className="flex items-center gap-[1vw]">
+                    <span className={`text-[1.5vw] font-semibold ${th.textPrimary}`}>{t}</span>
+                    {twoGroups && (
+                      <button onClick={() => toggleTeamGroup(t)}
+                        className={`px-[0.8vw] py-[0.2vh] rounded-lg font-bold text-[1.1vw] transition-colors ${(teamGroups[t] ?? "A") === "A" ? th.presetOn : "bg-blue-600 text-white border border-blue-600"}`}>
+                        {teamGroups[t] ?? "A"}
+                      </button>
+                    )}
+                  </div>
                   <button onClick={() => removeTeam(t)} className={`text-[1.8vw] leading-none font-bold px-[0.5vw] transition-colors ${th.remove}`}>×</button>
                 </div>
               ))}
@@ -824,6 +895,8 @@ export default function GamePage() {
           fetchGames={fetchGames}
           loadingGames={loadingGames}
           fetchError={fetchError}
+          twoGroups={twoGroups}
+          teamGroups={teamGroups}
         />
       )}
 

@@ -20,6 +20,8 @@ export type Room = {
   name: string;
   teams: string[];
   duration_minutes: number;
+  two_groups: boolean;
+  team_groups: Record<string, string>;
   last_active_at: string;
   created_at: string;
 };
@@ -83,6 +85,13 @@ export async function updateRoomDuration(roomId: string, minutes: number): Promi
 export async function updateRoomName(roomId: string, name: string): Promise<void> {
   const sb = getSupabase();
   const { error } = await sb.from("rooms").update({ name }).eq("id", roomId);
+  if (error) throw new Error(error.message);
+}
+
+/** Update two-groups toggle and team-to-group mapping. */
+export async function updateRoomGroupSettings(roomId: string, twoGroups: boolean, teamGroups: Record<string, string>): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from("rooms").update({ two_groups: twoGroups, team_groups: teamGroups }).eq("id", roomId);
   if (error) throw new Error(error.message);
 }
 
