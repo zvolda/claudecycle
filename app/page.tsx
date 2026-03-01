@@ -564,7 +564,7 @@ export default function GamePage() {
 
           <button onClick={handleCreateRoom} disabled={roomLoading}
             className={`w-full py-4 rounded-2xl font-bold text-lg transition-colors disabled:opacity-40 ${th.btnPrimary}`}>
-            {roomLoading ? "Creating..." : "Create New Room"}
+            {roomLoading ? "Creating..." : "Create Tournament"}
           </button>
 
           <div className="flex items-center gap-3 w-full">
@@ -747,7 +747,7 @@ export default function GamePage() {
           </div>
 
           {/* Right column */}
-          <div className="w-[38vw] flex flex-col gap-[2vw]">
+          <div className="w-[38vw] flex flex-col gap-[2vw] overflow-y-auto min-h-0">
 
             {/* Minutes panel */}
             <div className={`rounded-2xl p-[2vw] flex flex-col gap-[2vh] ${th.panel}`}>
@@ -800,9 +800,9 @@ export default function GamePage() {
                   PIN:
                   <span className="font-mono font-bold tracking-widest">{showPin ? room.pin : "••••"}</span>
                   <button onClick={() => setShowPin((s) => !s)}
-                    className={`text-[1.2vw] leading-none transition-colors ${th.textMuted} hover:${th.textPrimary}`}
+                    className={`text-[1.1vw] leading-none transition-colors px-[0.3vw] ${th.btnSecondary} rounded-md`}
                     title={showPin ? "Hide PIN" : "Show PIN"}>
-                    {showPin ? "🙈" : "👁"}
+                    {showPin ? "Hide" : "Show"}
                   </button>
                 </span>
                 <button onClick={handleLeaveRoom}
