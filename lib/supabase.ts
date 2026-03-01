@@ -14,6 +14,19 @@ export function getSupabase(): SupabaseClient {
   return _client;
 }
 
+export type CurrentMatch = {
+  player1: string;
+  player2: string;
+  score1: number;
+  score2: number;
+  half: number;
+  running: boolean;
+  finished: boolean;
+  total_seconds: number;
+  seconds_left: number;
+  updated_at: string;
+};
+
 export type Room = {
   id: string;
   pin: string;
@@ -22,6 +35,7 @@ export type Room = {
   duration_minutes: number;
   two_groups: boolean;
   team_groups: Record<string, string>;
+  current_match: CurrentMatch | null;
   last_active_at: string;
   created_at: string;
 };
@@ -93,6 +107,20 @@ export async function updateRoomGroupSettings(roomId: string, twoGroups: boolean
   const sb = getSupabase();
   const { error } = await sb.from("rooms").update({ two_groups: twoGroups, team_groups: teamGroups }).eq("id", roomId);
   if (error) throw new Error(error.message);
+}
+
+/** Push current match state to the room for live viewers. */
+export async function updateCurrentMatch(roomId: string, match: CurrentMatch | null): Promise<void> {
+  const sb = getSupabase();
+  await sb.from("rooms").update({ current_match: match }).eq("id", roomId);
+}
+
+/** Fetch a room by ID (for polling). */
+export async function fetchRoom(roomId: string): Promise<Room | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from("rooms").select("*").eq("id", roomId).single();
+  if (error || !data) return null;
+  return data as Room;
 }
 
 /** Bump last_active_at so the room doesn't auto-expire. */

@@ -5,12 +5,15 @@ import {
   getSupabase,
   Game,
   Room,
+  CurrentMatch,
   createRoom,
   joinRoom,
   updateRoomTeams,
   updateRoomDuration,
   updateRoomName,
   updateRoomGroupSettings,
+  updateCurrentMatch,
+  fetchRoom,
   touchRoom,
   fetchRoomGames,
   fetchAllRooms,
@@ -186,6 +189,45 @@ function getMatchResult(games: Game[], teamA: string, teamB: string): string | n
   return null;
 }
 
+// ── Live match display for viewers ───────────────────────────────────────────
+function LiveMatch({ match, th }: { match: CurrentMatch; th: typeof T[ThemeKey] }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!match.running) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [match.running]);
+
+  let secsLeft = match.seconds_left;
+  if (match.running && match.updated_at) {
+    const elapsed = Math.floor((now - new Date(match.updated_at).getTime()) / 1000);
+    secsLeft = Math.max(0, match.seconds_left - elapsed);
+  }
+  const mm = String(Math.floor(secsLeft / 60)).padStart(2, "0");
+  const ss = String(secsLeft % 60).padStart(2, "0");
+
+  return (
+    <div className={`shrink-0 rounded-xl p-[1.5vw] flex items-center justify-center gap-[3vw] ${th.panel}`}>
+      <div className="flex flex-col items-center">
+        <span className={`text-[1.4vw] font-bold ${th.textPrimary}`}>{match.player1}</span>
+        <span className={`text-[3vw] font-black tabular-nums ${th.textPrimary}`}>{match.score1}</span>
+      </div>
+      <div className="flex flex-col items-center">
+        <span className={`text-[1vw] font-bold ${th.textMuted}`}>{match.half === 1 ? "1st" : "2nd"}</span>
+        <span className={`text-[2.5vw] font-mono font-black tabular-nums ${match.finished ? "text-red-500" : match.running ? th.textPrimary : th.textMuted}`}>
+          {mm}:{ss}
+        </span>
+        {match.finished && <span className="text-red-500 font-bold text-[1vw] animate-pulse">Time&apos;s up!</span>}
+      </div>
+      <div className="flex flex-col items-center">
+        <span className={`text-[1.4vw] font-bold ${th.textPrimary}`}>{match.player2}</span>
+        <span className={`text-[3vw] font-black tabular-nums ${th.textPrimary}`}>{match.score2}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Group standings + matrix block ───────────────────────────────────────────
 function GroupBlock({ label, teams, games, th, loadingGames }: {
   label?: string;
@@ -267,7 +309,7 @@ function GroupBlock({ label, teams, games, th, loadingGames }: {
 }
 
 // ── Results view (shared between main app and read-only view) ────────────────
-function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups }: {
+function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups, currentMatch }: {
   teams: string[];
   games: Game[];
   th: typeof T[ThemeKey];
@@ -276,6 +318,7 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
   fetchError: string;
   twoGroups?: boolean;
   teamGroups?: Record<string, string>;
+  currentMatch?: CurrentMatch | null;
 }) {
   const groupA = twoGroups ? teams.filter(t => (teamGroups?.[t] ?? "A") === "A") : [];
   const groupB = twoGroups ? teams.filter(t => teamGroups?.[t] === "B") : [];
@@ -288,6 +331,10 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
           <button onClick={fetchGames} className={`text-[1.1vw] transition-colors px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
         )}
       </div>
+
+      {currentMatch && currentMatch.player1 && (
+        <LiveMatch match={currentMatch} th={th} />
+      )}
 
       {fetchError && <p className="text-[1.2vw] text-red-500 shrink-0">{fetchError}</p>}
       {teams.length === 0 ? (
@@ -515,9 +562,30 @@ export default function GamePage() {
     persistGroupSettings(twoGroups, { ...teamGroups, [teamName]: next });
   };
 
+  // ── Push live match state to Supabase ──
+  const pushMatchState = useCallback((overrides?: Partial<{ p1: string; p2: string; s1: number; s2: number; h: number; r: boolean; f: boolean; sl: number }>) => {
+    if (!room) return;
+    const match: CurrentMatch = {
+      player1: overrides?.p1 ?? player1,
+      player2: overrides?.p2 ?? player2,
+      score1: overrides?.s1 ?? score1,
+      score2: overrides?.s2 ?? score2,
+      half: overrides?.h ?? half,
+      running: overrides?.r ?? running,
+      finished: overrides?.f ?? finished,
+      total_seconds: selectedMinutes * 60,
+      seconds_left: overrides?.sl ?? secondsLeft,
+      updated_at: new Date().toISOString(),
+    };
+    updateCurrentMatch(room.id, match).catch(() => {});
+  }, [room, player1, player2, score1, score2, half, running, finished, selectedMinutes, secondsLeft]);
+
   // ── Timer ──
   const clearTimer = () => { if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = null; };
-  const handleFinish = useCallback(() => { clearTimer(); setRunning(false); setFinished(true); }, []);
+  const handleFinish = useCallback(() => {
+    clearTimer(); setRunning(false); setFinished(true);
+    pushMatchState({ r: false, f: true, sl: 0 });
+  }, [pushMatchState]);
   useEffect(() => {
     if (running) {
       intervalRef.current = setInterval(() => {
@@ -534,15 +602,35 @@ export default function GamePage() {
   };
   const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); };
   const teamsReady = teams.length > 0 && teams.includes(player1) && teams.includes(player2) && player1 !== player2;
-  const handleTimerClick = () => { if (editingTime || finished || !teamsReady) return; setRunning((r) => !r); };
+  const handleTimerClick = () => {
+    if (editingTime || finished || !teamsReady) return;
+    setRunning((r) => {
+      const next = !r;
+      setTimeout(() => pushMatchState({ r: next }), 0);
+      return next;
+    });
+  };
   const swapTeams = () => {
     const wasFinished = finished; const p1 = player1, s1 = score1, s2 = score2;
     if (wasFinished) { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setSecondsLeft(selectedMinutes * 60); if (half === 1) setHalf(2); }
     setPlayer1(player2); setPlayer2(p1); if (!wasFinished) { setScore1(s2); setScore2(s1); }
+    setTimeout(() => pushMatchState({
+      p1: player2, p2: p1,
+      s1: wasFinished ? 0 : s2, s2: wasFinished ? 0 : s1,
+      r: false, f: false,
+      sl: wasFinished ? selectedMinutes * 60 : secondsLeft,
+      h: wasFinished && half === 1 ? 2 : half,
+    }), 0);
   };
-  const handleScoreClick = (setter: React.Dispatch<React.SetStateAction<number>>, e: React.MouseEvent) => {
+  const handleScoreClick = (which: 1 | 2, e: React.MouseEvent) => {
     e.preventDefault();
-    setter((prev) => e.type === "contextmenu" ? Math.max(0, prev - 1) : prev + 1);
+    const setter = which === 1 ? setScore1 : setScore2;
+    setter((prev) => {
+      const next = e.type === "contextmenu" ? Math.max(0, prev - 1) : prev + 1;
+      // Push after state update via setTimeout
+      setTimeout(() => pushMatchState(which === 1 ? { s1: next } : { s2: next }), 0);
+      return next;
+    });
   };
   const handleTimeSegmentClick = (seg: "min" | "tens" | "ones", e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -586,6 +674,21 @@ export default function GamePage() {
     return <main className={`h-screen w-screen flex items-center justify-center ${th.main}`} />;
   }
 
+  // ── Poll read-only view for live updates ──
+  useEffect(() => {
+    if (!viewingRoom || room) return;
+    const poll = async () => {
+      const updated = await fetchRoom(viewingRoom.id);
+      if (updated) {
+        setViewingRoom(updated);
+        const games = await fetchRoomGames(updated.id);
+        setViewGames(games);
+      }
+    };
+    const id = setInterval(poll, 3000);
+    return () => clearInterval(id);
+  }, [viewingRoom?.id, room]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Read-only tournament view ──
   if (viewingRoom && !room) {
     return (
@@ -605,6 +708,7 @@ export default function GamePage() {
           fetchError=""
           twoGroups={viewingRoom.two_groups}
           teamGroups={viewingRoom.team_groups}
+          currentMatch={viewingRoom.current_match}
         />
       </main>
     );
@@ -688,7 +792,7 @@ export default function GamePage() {
           <div className="absolute top-[4%] left-[4%] flex flex-col gap-[1vh]">
             <span className={`font-bold text-[3.5vw] max-w-[22vw] truncate ${th.textPrimary}`}>{player1}</span>
             <div className={`w-[18vw] h-[34vh] rounded-xl flex items-center justify-center cursor-pointer transition-colors ${th.scoreBox}`}
-              onClick={(e) => handleScoreClick(setScore1, e)} onContextMenu={(e) => handleScoreClick(setScore1, e)}
+              onClick={(e) => handleScoreClick(1, e)} onContextMenu={(e) => handleScoreClick(1, e)}
               title="Left click +1 · Right click −1">
               <span className={`font-black tabular-nums leading-none text-[15vw] ${th.textPrimary}`}>{score1}</span>
             </div>
@@ -698,7 +802,7 @@ export default function GamePage() {
           <div className="absolute top-[4%] right-[4%] flex flex-col gap-[1vh] items-end">
             <span className={`font-bold text-[3.5vw] max-w-[22vw] truncate text-right ${th.textPrimary}`}>{player2}</span>
             <div className={`w-[18vw] h-[34vh] rounded-xl flex items-center justify-center cursor-pointer transition-colors ${th.scoreBox}`}
-              onClick={(e) => handleScoreClick(setScore2, e)} onContextMenu={(e) => handleScoreClick(setScore2, e)}
+              onClick={(e) => handleScoreClick(2, e)} onContextMenu={(e) => handleScoreClick(2, e)}
               title="Left click +1 · Right click −1">
               <span className={`font-black tabular-nums leading-none text-[15vw] ${th.textPrimary}`}>{score2}</span>
             </div>
@@ -747,11 +851,11 @@ export default function GamePage() {
           <div className="absolute bottom-[1.5%] left-1/2 -translate-x-1/2 flex flex-nowrap items-center gap-[1.5vw]">
             {teams.length > 0 ? (
               <>
-                <select value={player1} onChange={(e) => setPlayer1(e.target.value)} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
+                <select value={player1} onChange={(e) => { setPlayer1(e.target.value); setTimeout(() => pushMatchState({ p1: e.target.value }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
                   {teams.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
                 <button onClick={swapTeams} title="Swap teams and scores" className={`text-[1.8vw] font-bold leading-none px-[0.3vw] transition-colors ${th.swap}`}>⇄</button>
-                <select value={player2} onChange={(e) => setPlayer2(e.target.value)} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
+                <select value={player2} onChange={(e) => { setPlayer2(e.target.value); setTimeout(() => pushMatchState({ p2: e.target.value }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
                   {teams.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </>
