@@ -419,6 +419,8 @@ export default function GamePage() {
           setSelectedMinutes(r.duration_minutes);
           setSecondsLeft(r.duration_minutes * 60);
           if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
+          // Clear stale live match on page load (no match is active after refresh)
+          updateCurrentMatch(r.id, null).catch(() => {});
         } else {
           localStorage.removeItem(STORAGE_PIN_KEY);
         }
@@ -600,7 +602,7 @@ export default function GamePage() {
     setSelectedMinutes(m); setSecondsLeft(m * 60);
     if (room) updateRoomDuration(room.id, m).catch(() => {});
   };
-  const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); };
+  const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); if (room) updateCurrentMatch(room.id, null).catch(() => {}); };
   const teamsReady = teams.length > 0 && teams.includes(player1) && teams.includes(player2) && player1 !== player2;
   const handleTimerClick = () => {
     if (editingTime || finished || !teamsReady) return;
