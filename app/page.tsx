@@ -961,44 +961,43 @@ export default function GamePage() {
           </div>
 
           {/* Right column */}
-          <div className="w-[38vw] flex flex-col gap-[2vw] overflow-y-auto min-h-0">
+          <div className="w-[38vw] flex flex-col gap-[1.2vw] min-h-0">
 
             {/* Minutes panel */}
-            <div className={`rounded-2xl p-[2vw] flex flex-col gap-[2vh] ${th.panel}`}>
-              <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Minutes</h2>
-              <p className={`text-[1.2vw] ${th.textMuted}`}>Duration for the next game.</p>
-              <div className="flex gap-[1.5vw]">
+            <div className={`rounded-2xl p-[1.5vw] flex flex-col gap-[1vh] ${th.panel}`}>
+              <h2 className={`text-[1.5vw] font-bold ${th.textPrimary}`}>Minutes</h2>
+              <div className="flex gap-[1vw]">
                 {PRESETS.map((m) => (
                   <button key={m} onClick={() => selectPreset(m)}
-                    className={`flex-1 py-[3vh] rounded-2xl font-black text-[3vw] transition-colors ${selectedMinutes === m ? th.presetOn : th.presetOff}`}>
+                    className={`flex-1 py-[2vh] rounded-2xl font-black text-[2.5vw] transition-colors ${selectedMinutes === m ? th.presetOn : th.presetOff}`}>
                     {m}
-                    <span className="block text-[1.2vw] font-semibold mt-[0.5vh] opacity-60">min</span>
+                    <span className="block text-[1vw] font-semibold opacity-60">min</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Theme panel */}
-            <div className={`rounded-2xl p-[2vw] flex flex-col gap-[2vh] ${th.panel}`}>
-              <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Theme</h2>
-              <div className="flex gap-[1.5vw]">
+            <div className={`rounded-2xl p-[1.5vw] flex flex-col gap-[1vh] ${th.panel}`}>
+              <h2 className={`text-[1.5vw] font-bold ${th.textPrimary}`}>Theme</h2>
+              <div className="flex gap-[1vw]">
                 {([
                   { key: "dark",  label: "Dark",   sub: "Black / White" },
                   { key: "light", label: "Light",  sub: "White / Black" },
                   { key: "color", label: "Color",  sub: "Blue accents"  },
                 ] as const).map(({ key, label, sub }) => (
                   <button key={key} onClick={() => changeTheme(key)}
-                    className={`flex-1 py-[2vh] rounded-2xl font-bold text-[1.4vw] transition-colors flex flex-col items-center gap-[0.5vh] ${theme === key ? th.presetOn : th.presetOff}`}>
+                    className={`flex-1 py-[1.5vh] rounded-2xl font-bold text-[1.3vw] transition-colors flex flex-col items-center gap-[0.3vh] ${theme === key ? th.presetOn : th.presetOff}`}>
                     {label}
-                    <span className="text-[1vw] font-normal opacity-60">{sub}</span>
+                    <span className="text-[0.9vw] font-normal opacity-60">{sub}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Room panel */}
-            <div className={`rounded-2xl p-[2vw] flex flex-col gap-[1.5vh] ${th.panel}`}>
-              <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Room</h2>
+            <div className={`rounded-2xl p-[1.5vw] flex flex-col gap-[1vh] ${th.panel}`}>
+              <h2 className={`text-[1.5vw] font-bold ${th.textPrimary}`}>Room</h2>
               <div className="flex gap-[1vw]">
                 <input
                   value={tournamentName}
@@ -1006,7 +1005,7 @@ export default function GamePage() {
                   onBlur={saveTournamentName}
                   onKeyDown={(e) => { if (e.key === "Enter") { saveTournamentName(); (e.target as HTMLInputElement).blur(); } }}
                   placeholder="Tournament name..."
-                  className={`flex-1 outline-none rounded-xl px-[1.2vw] py-[1vh] text-[1.3vw] transition-colors ${th.input}`}
+                  className={`flex-1 outline-none rounded-xl px-[1.2vw] py-[0.8vh] text-[1.3vw] transition-colors ${th.input}`}
                 />
               </div>
               <div className="flex items-center justify-between">
