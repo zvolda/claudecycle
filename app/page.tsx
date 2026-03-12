@@ -229,12 +229,65 @@ function LiveMatch({ match, th }: { match: CurrentMatch; th: typeof T[ThemeKey] 
 }
 
 // ── Group standings + matrix block ───────────────────────────────────────────
-function GroupBlock({ label, teams, games, th, loadingGames }: {
+function EditableCell({ team, opp, result, th, onSave }: {
+  team: string; opp: string; result: string | null;
+  th: typeof T[ThemeKey];
+  onSave?: (teamA: string, teamB: string, scoreA: number, scoreB: number) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(result ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setValue(result ?? ""); }, [result]);
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  const commit = async () => {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const m = trimmed.match(/^(\d+)\s*[:;\-]\s*(\d+)$/);
+    if (!m) { setValue(result ?? ""); return; }
+    const s1 = parseInt(m[1]), s2 = parseInt(m[2]);
+    if (onSave) await onSave(team, opp, s1, s2);
+  };
+
+  if (!onSave) {
+    return (
+      <td className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap ${result ? "" : th.cellEmpty}`}>
+        {result ?? ""}
+      </td>
+    );
+  }
+
+  return (
+    <td
+      className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap cursor-pointer ${result ? "" : th.cellEmpty}`}
+      onClick={() => { if (!editing) setEditing(true); }}
+    >
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setEditing(false); setValue(result ?? ""); } }}
+          className={`w-[3.5vw] text-center text-[1.1vw] outline-none bg-transparent border-b-2 ${th.cellText}`}
+          placeholder="0:0"
+        />
+      ) : (
+        result ?? ""
+      )}
+    </td>
+  );
+}
+
+function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
   label?: string;
   teams: string[];
   games: Game[];
   th: typeof T[ThemeKey];
   loadingGames: boolean;
+  onSaveResult?: (teamA: string, teamB: string, scoreA: number, scoreB: number) => Promise<void>;
 }) {
   const uniqueGames = dedupeGames(games).filter(g => teams.includes(g.player1_name) && teams.includes(g.player2_name));
   const standings = computeStandings(uniqueGames);
@@ -293,9 +346,7 @@ function GroupBlock({ label, teams, games, th, loadingGames }: {
                   if (ri === ci) return <td key={ci} className={`border ${th.cellBorder} ${th.cellDiag}`} />;
                   const result = getMatchResult(uniqueGames, team, opp);
                   return (
-                    <td key={ci} className={`border ${th.cellBorder} px-[0.5vw] py-[0.5vh] text-center whitespace-nowrap ${result ? "" : th.cellEmpty}`}>
-                      {result ?? ""}
-                    </td>
+                    <EditableCell key={ci} team={team} opp={opp} result={result} th={th} onSave={onSaveResult} />
                   );
                 })}
               </tr>
@@ -309,7 +360,7 @@ function GroupBlock({ label, teams, games, th, loadingGames }: {
 }
 
 // ── Results view (shared between main app and read-only view) ────────────────
-function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups, currentMatch }: {
+function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups, currentMatch, onSaveResult }: {
   teams: string[];
   games: Game[];
   th: typeof T[ThemeKey];
@@ -319,6 +370,7 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
   twoGroups?: boolean;
   teamGroups?: Record<string, string>;
   currentMatch?: CurrentMatch | null;
+  onSaveResult?: (teamA: string, teamB: string, scoreA: number, scoreB: number) => Promise<void>;
 }) {
   const groupA = twoGroups ? teams.filter(t => (teamGroups?.[t] ?? "A") === "A") : [];
   const groupB = twoGroups ? teams.filter(t => teamGroups?.[t] === "B") : [];
@@ -342,17 +394,17 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
       ) : twoGroups ? (
         <>
           {groupA.length > 0 && (
-            <GroupBlock label="Group A" teams={groupA} games={games} th={th} loadingGames={loadingGames} />
+            <GroupBlock label="Group A" teams={groupA} games={games} th={th} loadingGames={loadingGames} onSaveResult={onSaveResult} />
           )}
           {groupB.length > 0 && (
-            <GroupBlock label="Group B" teams={groupB} games={games} th={th} loadingGames={loadingGames} />
+            <GroupBlock label="Group B" teams={groupB} games={games} th={th} loadingGames={loadingGames} onSaveResult={onSaveResult} />
           )}
           {groupA.length === 0 && groupB.length === 0 && (
             <p className={`text-[1.3vw] ${th.textMuted}`}>No teams assigned to groups yet.</p>
           )}
         </>
       ) : (
-        <GroupBlock teams={teams} games={games} th={th} loadingGames={loadingGames} />
+        <GroupBlock teams={teams} games={games} th={th} loadingGames={loadingGames} onSaveResult={onSaveResult} />
       )}
     </div>
   );
@@ -391,8 +443,6 @@ export default function GamePage() {
   const [secondsLeft, setSecondsLeft] = useState(7 * 60);
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [tab, setTab] = useState<"game" | "settings" | "results">("game");
   const [half, setHalf] = useState<1 | 2>(1);
   const [editingTime, setEditingTime] = useState(false);
@@ -400,7 +450,6 @@ export default function GamePage() {
   const [loadingGames, setLoadingGames] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [fetchError, setFetchError] = useState("");
-  const [saveError, setSaveError] = useState("");
 
   // ── Load theme + check for saved room PIN on mount ──
   useEffect(() => {
@@ -598,11 +647,11 @@ export default function GamePage() {
   }, [running, handleFinish]);
 
   const selectPreset = (m: number) => {
-    clearTimer(); setRunning(false); setFinished(false); setSaved(false); setEditingTime(false);
+    clearTimer(); setRunning(false); setFinished(false); setEditingTime(false);
     setSelectedMinutes(m); setSecondsLeft(m * 60);
     if (room) updateRoomDuration(room.id, m).catch(() => {});
   };
-  const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); if (room) updateCurrentMatch(room.id, null).catch(() => {}); };
+  const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); if (room) updateCurrentMatch(room.id, null).catch(() => {}); };
   const teamsReady = teams.length > 0 && teams.includes(player1) && teams.includes(player2) && player1 !== player2;
   const handleTimerClick = () => {
     if (editingTime || finished || !teamsReady) return;
@@ -614,7 +663,7 @@ export default function GamePage() {
   };
   const swapTeams = () => {
     const wasFinished = finished; const p1 = player1, s1 = score1, s2 = score2;
-    if (wasFinished) { clearTimer(); setRunning(false); setFinished(false); setSaved(false); setSaveError(""); setSecondsLeft(selectedMinutes * 60); if (half === 1) setHalf(2); }
+    if (wasFinished) { clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60); if (half === 1) setHalf(2); }
     setPlayer1(player2); setPlayer2(p1); if (!wasFinished) { setScore1(s2); setScore2(s1); }
     setTimeout(() => pushMatchState({
       p1: player2, p2: p1,
@@ -644,26 +693,22 @@ export default function GamePage() {
   };
 
   // ── Save game scoped to room ──
-  const saveGame = async () => {
+  const saveResult = useCallback(async (teamA: string, teamB: string, scoreA: number, scoreB: number) => {
     if (!room) return;
-    setSaving(true); setSaveError("");
     try {
       const sb = getSupabase();
-      await sb.from("games").delete().eq("room_id", room.id).eq("player1_name", player1).eq("player2_name", player2);
-      await sb.from("games").delete().eq("room_id", room.id).eq("player1_name", player2).eq("player2_name", player1);
+      await sb.from("games").delete().eq("room_id", room.id).eq("player1_name", teamA).eq("player2_name", teamB);
+      await sb.from("games").delete().eq("room_id", room.id).eq("player1_name", teamB).eq("player2_name", teamA);
       const { error } = await sb.from("games").insert({
-        player1_name: player1, player2_name: player2,
-        player1_score: score1, player2_score: score2,
+        player1_name: teamA, player2_name: teamB,
+        player1_score: scoreA, player2_score: scoreB,
         duration_minutes: selectedMinutes, room_id: room.id,
       });
-      if (error) setSaveError(error.message);
-      else {
-        setSaved(true); setTimeout(() => setSaved(false), 2000);
-        touchRoom(room.id).catch(() => {});
-      }
-    } catch { setSaveError("Connection failed"); }
-    setSaving(false);
-  };
+      if (error) throw error;
+      touchRoom(room.id).catch(() => {});
+      await fetchGames();
+    } catch { /* silently fail */ }
+  }, [room, selectedMinutes, fetchGames]);
 
   const mins = Math.floor(secondsLeft / 60), secs = secondsLeft % 60;
   const timeStr = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
@@ -872,15 +917,6 @@ export default function GamePage() {
                 {editingTime ? "Done" : "Set Time"}
               </button>
             )}
-            {saveError ? (
-              <span className="font-semibold text-[1.2vw] text-red-500 whitespace-nowrap">{saveError}</span>
-            ) : saved ? (
-              <span className={`font-semibold text-[1.2vw] whitespace-nowrap ${th.saved}`}>✓ Saved</span>
-            ) : (
-              <button onClick={saveGame} disabled={saving} className={`px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] transition-colors disabled:opacity-40 whitespace-nowrap ${th.btnPrimary}`}>
-                {saving ? "Saving..." : "Save Game"}
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -1004,6 +1040,7 @@ export default function GamePage() {
           fetchError={fetchError}
           twoGroups={twoGroups}
           teamGroups={teamGroups}
+          onSaveResult={saveResult}
         />
       )}
 
