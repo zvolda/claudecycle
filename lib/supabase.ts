@@ -28,16 +28,12 @@ export type CurrentMatch = {
 };
 
 export type PlayoffMatch = {
+  id: string;
+  name: string;
   team1: string;
   team2: string;
   score1: number | null;
   score2: number | null;
-};
-
-export type Playoffs = {
-  semi1: PlayoffMatch;
-  semi2: PlayoffMatch;
-  final: PlayoffMatch;
 };
 
 export type Room = {
@@ -49,7 +45,7 @@ export type Room = {
   two_groups: boolean;
   team_groups: Record<string, string>;
   current_match: CurrentMatch | null;
-  playoffs: Playoffs | null;
+  playoffs: PlayoffMatch[] | null;
   last_active_at: string;
   created_at: string;
 };
@@ -124,8 +120,8 @@ export async function updateRoomGroupSettings(roomId: string, twoGroups: boolean
   if (error) throw new Error(error.message);
 }
 
-/** Update playoffs bracket. */
-export async function updateRoomPlayoffs(roomId: string, playoffs: Playoffs | null): Promise<void> {
+/** Update playoffs matches. */
+export async function updateRoomPlayoffs(roomId: string, playoffs: PlayoffMatch[] | null): Promise<void> {
   const sb = getSupabase();
   const { error } = await sb.from("rooms").update({ playoffs }).eq("id", roomId);
   if (error) throw new Error(error.message);
