@@ -27,6 +27,19 @@ export type CurrentMatch = {
   updated_at: string;
 };
 
+export type PlayoffMatch = {
+  team1: string;
+  team2: string;
+  score1: number | null;
+  score2: number | null;
+};
+
+export type Playoffs = {
+  semi1: PlayoffMatch;
+  semi2: PlayoffMatch;
+  final: PlayoffMatch;
+};
+
 export type Room = {
   id: string;
   pin: string;
@@ -36,6 +49,7 @@ export type Room = {
   two_groups: boolean;
   team_groups: Record<string, string>;
   current_match: CurrentMatch | null;
+  playoffs: Playoffs | null;
   last_active_at: string;
   created_at: string;
 };
@@ -51,22 +65,23 @@ export type Game = {
   room_id: string;
 };
 
-/** Create a new room with a random 4-digit PIN (1000–9999). Retries on collision. */
+/** Create a new room with a random 6-char alphanumeric code. Retries on collision. */
 export async function createRoom(): Promise<Room> {
   const sb = getSupabase();
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   for (let attempt = 0; attempt < 10; attempt++) {
-    const pin = String(Math.floor(1000 + Math.random() * 9000));
+    let pin = "";
+    for (let i = 0; i < 6; i++) pin += chars[Math.floor(Math.random() * chars.length)];
     const { data, error } = await sb
       .from("rooms")
       .insert({ pin })
       .select()
       .single();
     if (data) return data as Room;
-    // 23505 = unique_violation (PIN collision) — retry
     if (error && error.code === "23505") continue;
     throw new Error(error?.message ?? "Failed to create room");
   }
-  throw new Error("Could not generate a unique PIN after 10 attempts");
+  throw new Error("Could not generate a unique code after 10 attempts");
 }
 
 /** Join an existing room by PIN. Returns the room or null if not found. */
@@ -106,6 +121,13 @@ export async function updateRoomName(roomId: string, name: string): Promise<void
 export async function updateRoomGroupSettings(roomId: string, twoGroups: boolean, teamGroups: Record<string, string>): Promise<void> {
   const sb = getSupabase();
   const { error } = await sb.from("rooms").update({ two_groups: twoGroups, team_groups: teamGroups }).eq("id", roomId);
+  if (error) throw new Error(error.message);
+}
+
+/** Update playoffs bracket. */
+export async function updateRoomPlayoffs(roomId: string, playoffs: Playoffs | null): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from("rooms").update({ playoffs }).eq("id", roomId);
   if (error) throw new Error(error.message);
 }
 

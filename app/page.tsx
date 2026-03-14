@@ -6,12 +6,15 @@ import {
   Game,
   Room,
   CurrentMatch,
+  Playoffs,
+  PlayoffMatch,
   createRoom,
   joinRoom,
   updateRoomTeams,
   updateRoomDuration,
   updateRoomName,
   updateRoomGroupSettings,
+  updateRoomPlayoffs,
   updateCurrentMatch,
   fetchRoom,
   touchRoom,
@@ -306,15 +309,17 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
     <div className="inline-flex flex-col gap-[1.5vh] w-full sm:w-auto">
       <div className="w-full sm:w-fit">
         <div className={`flex items-center py-[0.4vh] text-[3vw] sm:text-[1.4vw] ${th.textMuted}`}>
-          <span className="w-[40vw] sm:w-[20vw]">Team</span>
+          <span className="w-[6vw] sm:w-[2.5vw] text-center">#</span>
+          <span className="w-[34vw] sm:w-[17.5vw]">Team</span>
           <span className="w-[12vw] sm:w-[5vw] text-center">Points</span>
           <span className="w-[14vw] sm:w-[6vw] text-center">Score</span>
         </div>
-        {rankedTeams.map((team) => {
+        {rankedTeams.map((team, idx) => {
           const st = standMap.get(team);
           return (
             <div key={team} className={`flex items-center py-[0.4vh] text-[3.5vw] sm:text-[1.8vw] ${th.cellText}`}>
-              <span className="w-[40vw] sm:w-[20vw] font-semibold">{team}</span>
+              <span className={`w-[6vw] sm:w-[2.5vw] text-center font-bold ${th.textMuted}`}>{idx + 1}.</span>
+              <span className="w-[34vw] sm:w-[17.5vw] font-semibold">{team}</span>
               <span className="w-[12vw] sm:w-[5vw] text-center font-black">{st?.points ?? 0}</span>
               <span className={`w-[14vw] sm:w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
             </div>
@@ -367,8 +372,82 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
   return <div className="flex justify-center">{content}</div>;
 }
 
+// ── Playoff match row ─────────────────────────────────────────────────────────
+function PlayoffMatchRow({ label, match, teams, th, onUpdate }: {
+  label: string;
+  match: PlayoffMatch;
+  teams: string[];
+  th: typeof T[ThemeKey];
+  onUpdate?: (m: PlayoffMatch) => void;
+}) {
+  const readOnly = !onUpdate;
+  return (
+    <div className={`rounded-lg p-[2vw] sm:p-[1vw] ${th.inner}`}>
+      <div className={`text-[3vw] sm:text-[1.2vw] font-bold mb-[0.5vh] ${th.textMuted}`}>{label}</div>
+      <div className="flex items-center gap-[2vw] sm:gap-[1vw]">
+        {readOnly ? (
+          <span className={`text-[3.5vw] sm:text-[1.4vw] font-semibold w-[30vw] sm:w-[12vw] ${th.cellText}`}>{match.team1 || "—"}</span>
+        ) : (
+          <select value={match.team1} onChange={(e) => onUpdate({ ...match, team1: e.target.value })}
+            className={`text-[3vw] sm:text-[1.2vw] rounded-lg px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] w-[30vw] sm:w-[12vw] ${th.select}`}>
+            <option value="">Select team</option>
+            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
+        {readOnly ? (
+          <span className={`text-[4vw] sm:text-[1.6vw] font-black tabular-nums ${th.cellText}`}>
+            {match.score1 != null && match.score2 != null ? `${match.score1} : ${match.score2}` : "– : –"}
+          </span>
+        ) : (
+          <div className="flex items-center gap-[1vw] sm:gap-[0.4vw]">
+            <input type="number" min={0} value={match.score1 ?? ""} placeholder="–"
+              onChange={(e) => onUpdate({ ...match, score1: e.target.value === "" ? null : Number(e.target.value) })}
+              className={`w-[10vw] sm:w-[3vw] text-center text-[3.5vw] sm:text-[1.4vw] font-bold rounded-lg py-[0.3vh] ${th.input}`} />
+            <span className={`text-[3.5vw] sm:text-[1.4vw] font-bold ${th.textMuted}`}>:</span>
+            <input type="number" min={0} value={match.score2 ?? ""} placeholder="–"
+              onChange={(e) => onUpdate({ ...match, score2: e.target.value === "" ? null : Number(e.target.value) })}
+              className={`w-[10vw] sm:w-[3vw] text-center text-[3.5vw] sm:text-[1.4vw] font-bold rounded-lg py-[0.3vh] ${th.input}`} />
+          </div>
+        )}
+        {readOnly ? (
+          <span className={`text-[3.5vw] sm:text-[1.4vw] font-semibold w-[30vw] sm:w-[12vw] text-right ${th.cellText}`}>{match.team2 || "—"}</span>
+        ) : (
+          <select value={match.team2} onChange={(e) => onUpdate({ ...match, team2: e.target.value })}
+            className={`text-[3vw] sm:text-[1.2vw] rounded-lg px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] w-[30vw] sm:w-[12vw] ${th.select}`}>
+            <option value="">Select team</option>
+            {teams.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PlayoffsBlock({ playoffs, teams, th, onUpdate }: {
+  playoffs: Playoffs;
+  teams: string[];
+  th: typeof T[ThemeKey];
+  onUpdate?: (p: Playoffs) => void;
+}) {
+  return (
+    <div className={`rounded-xl p-[3vw] sm:p-[1.5vw] ${th.panel}`}>
+      <h3 className={`text-[4vw] sm:text-[1.5vw] font-bold mb-[1.5vh] ${th.textPrimary}`}>Playoffs</h3>
+      <div className="flex flex-col gap-[1.5vh]">
+        <div className={`text-[3.5vw] sm:text-[1.3vw] font-bold ${th.textSec}`}>Semifinals</div>
+        <PlayoffMatchRow label="Semi-final 1" match={playoffs.semi1} teams={teams} th={th}
+          onUpdate={onUpdate ? (m) => onUpdate({ ...playoffs, semi1: m }) : undefined} />
+        <PlayoffMatchRow label="Semi-final 2" match={playoffs.semi2} teams={teams} th={th}
+          onUpdate={onUpdate ? (m) => onUpdate({ ...playoffs, semi2: m }) : undefined} />
+        <div className={`text-[3.5vw] sm:text-[1.3vw] font-bold mt-[1vh] ${th.textSec}`}>Final</div>
+        <PlayoffMatchRow label="Final" match={playoffs.final} teams={teams} th={th}
+          onUpdate={onUpdate ? (m) => onUpdate({ ...playoffs, final: m }) : undefined} />
+      </div>
+    </div>
+  );
+}
+
 // ── Results view (shared between main app and read-only view) ────────────────
-function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups, currentMatch, onSaveResult }: {
+function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups, currentMatch, onSaveResult, playoffs, onPlayoffsUpdate }: {
   teams: string[];
   games: Game[];
   th: typeof T[ThemeKey];
@@ -379,9 +458,14 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
   teamGroups?: Record<string, string>;
   currentMatch?: CurrentMatch | null;
   onSaveResult?: (teamA: string, teamB: string, scoreA: number, scoreB: number) => Promise<void>;
+  playoffs?: Playoffs | null;
+  onPlayoffsUpdate?: (p: Playoffs) => void;
 }) {
   const groupA = twoGroups ? teams.filter(t => (teamGroups?.[t] ?? "A") === "A") : [];
   const groupB = twoGroups ? teams.filter(t => teamGroups?.[t] === "B") : [];
+
+  const emptyMatch: PlayoffMatch = { team1: "", team2: "", score1: null, score2: null };
+  const defaultPlayoffs: Playoffs = { semi1: emptyMatch, semi2: emptyMatch, final: emptyMatch };
 
   return (
     <div className="flex-1 flex flex-col p-[3vw] sm:p-[2.5vw] gap-[2vh] min-h-0 overflow-auto">
@@ -414,6 +498,21 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
       ) : (
         <GroupBlock teams={teams} games={games} th={th} loadingGames={loadingGames} onSaveResult={onSaveResult} />
       )}
+
+      {/* Playoffs section */}
+      {onPlayoffsUpdate && (
+        !playoffs ? (
+          <button onClick={() => onPlayoffsUpdate(defaultPlayoffs)}
+            className={`text-[3.5vw] sm:text-[1.2vw] px-[3vw] sm:px-[1.5vw] py-[1vh] rounded-xl font-bold transition-colors self-start ${th.btnSecondary}`}>
+            + Add Playoffs
+          </button>
+        ) : (
+          <PlayoffsBlock playoffs={playoffs} teams={teams} th={th} onUpdate={onPlayoffsUpdate} />
+        )
+      )}
+      {!onPlayoffsUpdate && playoffs && (
+        <PlayoffsBlock playoffs={playoffs} teams={teams} th={th} />
+      )}
     </div>
   );
 }
@@ -432,6 +531,7 @@ export default function GamePage() {
   const [tournamentName, setTournamentName] = useState("");
   const [twoGroups, setTwoGroups] = useState(false);
   const [teamGroups, setTeamGroups] = useState<Record<string, string>>({});
+  const [playoffs, setPlayoffs] = useState<Playoffs | null>(null);
 
   // Gate screen: public tournament list + read-only view
   const [allRooms, setAllRooms] = useState<Room[]>([]);
@@ -473,6 +573,7 @@ export default function GamePage() {
           setTournamentName(r.name);
           setTwoGroups(r.two_groups);
           setTeamGroups(r.team_groups ?? {});
+          setPlayoffs(r.playoffs ?? null);
           setSelectedMinutes(r.duration_minutes);
           setSecondsLeft(r.duration_minutes * 60);
           if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
@@ -521,6 +622,7 @@ export default function GamePage() {
       setTournamentName(r.name);
       setTwoGroups(r.two_groups);
       setTeamGroups(r.team_groups ?? {});
+      setPlayoffs(r.playoffs ?? null);
       setSelectedMinutes(r.duration_minutes);
       setSecondsLeft(r.duration_minutes * 60);
     } catch (e) {
@@ -542,6 +644,7 @@ export default function GamePage() {
       setTournamentName(r.name);
       setTwoGroups(r.two_groups);
       setTeamGroups(r.team_groups ?? {});
+      setPlayoffs(r.playoffs ?? null);
       setSelectedMinutes(r.duration_minutes);
       setSecondsLeft(r.duration_minutes * 60);
       if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
@@ -564,6 +667,7 @@ export default function GamePage() {
     setTournamentName("");
     setTwoGroups(false);
     setTeamGroups({});
+    setPlayoffs(null);
   };
 
   // ── View a tournament read-only ──
@@ -787,6 +891,7 @@ export default function GamePage() {
           twoGroups={viewingRoom.two_groups}
           teamGroups={viewingRoom.team_groups}
           currentMatch={viewingRoom.current_match}
+          playoffs={viewingRoom.playoffs}
         />
       </main>
     );
@@ -808,18 +913,17 @@ export default function GamePage() {
 
           <div className="flex items-center gap-3 w-full">
             <div className={`flex-1 h-px ${th.divider}`} />
-            <span className={`text-sm ${th.gateText}`}>or join with PIN</span>
+            <span className={`text-sm ${th.gateText}`}>or join with code</span>
             <div className={`flex-1 h-px ${th.divider}`} />
           </div>
 
           <div className="flex gap-3 w-full">
             <input
               value={pinInput}
-              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              onChange={(e) => setPinInput(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6))}
               onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
-              placeholder="4-digit PIN"
-              inputMode="numeric"
-              maxLength={4}
+              placeholder="Room code"
+              maxLength={6}
               className={`flex-1 outline-none rounded-xl px-4 py-3 text-center text-lg font-mono tracking-[0.3em] transition-colors ${th.input}`}
             />
             <button onClick={handleJoinRoom} disabled={roomLoading || pinInput.length < 4}
@@ -1040,8 +1144,8 @@ export default function GamePage() {
               </div>
               <div className="flex items-center justify-between">
                 <span className={`text-[1.3vw] flex items-center gap-[0.5vw] ${th.textSec}`}>
-                  PIN:
-                  <span className="font-mono font-bold tracking-widest">{showPin ? room.pin : "••••"}</span>
+                  Code:
+                  <span className="font-mono font-bold tracking-widest">{showPin ? room.pin : "••••••"}</span>
                   <button onClick={() => setShowPin((s) => !s)}
                     className={`text-[1.1vw] leading-none transition-colors px-[0.3vw] ${th.btnSecondary} rounded-md`}
                     title={showPin ? "Hide PIN" : "Show PIN"}>
@@ -1070,6 +1174,11 @@ export default function GamePage() {
           twoGroups={twoGroups}
           teamGroups={teamGroups}
           onSaveResult={saveResult}
+          playoffs={playoffs}
+          onPlayoffsUpdate={(p) => {
+            setPlayoffs(p);
+            if (room) updateRoomPlayoffs(room.id, p).catch(() => {});
+          }}
         />
       )}
 
