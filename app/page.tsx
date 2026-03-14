@@ -575,7 +575,7 @@ export default function GamePage() {
           setTournamentName(r.name);
           setTwoGroups(r.two_groups);
           setTeamGroups(r.team_groups ?? {});
-          setPlayoffs(r.playoffs ?? null);
+          setPlayoffs(Array.isArray(r.playoffs) ? r.playoffs : null);
           setSelectedMinutes(r.duration_minutes);
           setSecondsLeft(r.duration_minutes * 60);
           if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
@@ -624,7 +624,7 @@ export default function GamePage() {
       setTournamentName(r.name);
       setTwoGroups(r.two_groups);
       setTeamGroups(r.team_groups ?? {});
-      setPlayoffs(r.playoffs ?? null);
+      setPlayoffs(Array.isArray(r.playoffs) ? r.playoffs : null);
       setSelectedMinutes(r.duration_minutes);
       setSecondsLeft(r.duration_minutes * 60);
     } catch (e) {
@@ -646,7 +646,7 @@ export default function GamePage() {
       setTournamentName(r.name);
       setTwoGroups(r.two_groups);
       setTeamGroups(r.team_groups ?? {});
-      setPlayoffs(r.playoffs ?? null);
+      setPlayoffs(Array.isArray(r.playoffs) ? r.playoffs : null);
       setSelectedMinutes(r.duration_minutes);
       setSecondsLeft(r.duration_minutes * 60);
       if (r.teams.length > 0) { setPlayer1(r.teams[0]); if (r.teams.length > 1) setPlayer2(r.teams[1]); }
