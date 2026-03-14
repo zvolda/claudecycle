@@ -303,20 +303,20 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
   const alphaTeams = [...teams].sort((a, b) => a.localeCompare(b));
 
   const content = (
-    <div className="inline-flex flex-col gap-[1.5vh]">
-      <div className="w-fit">
-        <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
-          <span className="w-[20vw]">Team</span>
-          <span className="w-[5vw] text-center">Points</span>
-          <span className="w-[6vw] text-center">Score</span>
+    <div className="inline-flex flex-col gap-[1.5vh] w-full sm:w-auto">
+      <div className="w-full sm:w-fit">
+        <div className={`flex items-center py-[0.4vh] text-[3vw] sm:text-[1.4vw] ${th.textMuted}`}>
+          <span className="w-[40vw] sm:w-[20vw]">Team</span>
+          <span className="w-[12vw] sm:w-[5vw] text-center">Points</span>
+          <span className="w-[14vw] sm:w-[6vw] text-center">Score</span>
         </div>
         {rankedTeams.map((team) => {
           const st = standMap.get(team);
           return (
-            <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
-              <span className="w-[20vw] font-semibold">{team}</span>
-              <span className="w-[5vw] text-center font-black">{st?.points ?? 0}</span>
-              <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
+            <div key={team} className={`flex items-center py-[0.4vh] text-[3.5vw] sm:text-[1.8vw] ${th.cellText}`}>
+              <span className="w-[40vw] sm:w-[20vw] font-semibold">{team}</span>
+              <span className="w-[12vw] sm:w-[5vw] text-center font-black">{st?.points ?? 0}</span>
+              <span className={`w-[14vw] sm:w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
             </div>
           );
         })}
@@ -324,21 +324,21 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
 
       <div>
         {loadingGames ? (
-          <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
+          <p className={`text-[3vw] sm:text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
         ) : (
-        <table className={`border-collapse text-[1.1vw] ${th.cellText} h-fit`}>
+        <table className={`border-collapse text-[2.5vw] sm:text-[1.1vw] ${th.cellText} h-fit`}>
           <thead>
             <tr>
-              <th className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-bold`}></th>
+              <th className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-left font-bold`}></th>
               {alphaTeams.map((t, i) => (
-                <th key={i} className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-center font-bold min-w-[3.5vw]`}>{i + 1}</th>
+                <th key={i} className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-bold min-w-[8vw] sm:min-w-[3.5vw]`}>{i + 1}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {alphaTeams.map((team, ri) => (
               <tr key={team}>
-                <td className={`border ${th.cellBorder} px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
+                <td className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
                 {alphaTeams.map((opp, ci) => {
                   if (ri === ci) return <td key={ci} className={`border ${th.cellBorder} ${th.cellDiag}`} />;
                   const result = getMatchResult(uniqueGames, team, opp);
@@ -357,9 +357,9 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
 
   if (label) {
     return (
-      <div className={`rounded-xl p-[1.5vw] flex items-center justify-center gap-[1.5vw] ${th.panel}`}>
-        <h3 className={`text-[2vw] font-bold ${th.textPrimary}`} style={{ writingMode: "vertical-lr", textOrientation: "mixed" }}>{label}</h3>
-        {content}
+      <div className={`rounded-xl p-[3vw] sm:p-[1.5vw] ${th.panel}`}>
+        <h3 className={`text-[4vw] sm:text-[1.5vw] font-bold mb-[1vh] ${th.textPrimary}`}>{label}</h3>
+        <div className="flex justify-center">{content}</div>
       </div>
     );
   }
@@ -384,11 +384,11 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
   const groupB = twoGroups ? teams.filter(t => teamGroups?.[t] === "B") : [];
 
   return (
-    <div className="flex-1 flex flex-col p-[2.5vw] gap-[2vh] min-h-0 overflow-auto">
+    <div className="flex-1 flex flex-col p-[3vw] sm:p-[2.5vw] gap-[2vh] min-h-0 overflow-auto">
       <div className="flex items-center justify-between shrink-0">
-        <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Results</h2>
+        <h2 className={`text-[5vw] sm:text-[1.8vw] font-bold ${th.textPrimary}`}>Results</h2>
         {fetchGames && (
-          <button onClick={fetchGames} className={`text-[1.1vw] transition-colors px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
+          <button onClick={fetchGames} className={`text-[3vw] sm:text-[1.1vw] transition-colors px-[3vw] sm:px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
         )}
       </div>
 
