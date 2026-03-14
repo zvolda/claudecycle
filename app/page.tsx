@@ -357,9 +357,9 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
 
   if (label) {
     return (
-      <div className={`rounded-xl p-[1.5vw] ${th.panel}`}>
-        <h3 className={`text-[1.5vw] font-bold mb-[1vh] ${th.textPrimary}`}>{label}</h3>
-        <div className="flex justify-center">{content}</div>
+      <div className={`rounded-xl p-[1.5vw] flex items-center justify-center gap-[1.5vw] ${th.panel}`}>
+        <h3 className={`text-[2vw] font-bold ${th.textPrimary}`} style={{ writingMode: "vertical-lr", textOrientation: "mixed" }}>{label}</h3>
+        {content}
       </div>
     );
   }
