@@ -640,11 +640,33 @@ export default function GamePage() {
   }, [room, player1, player2, score1, score2, half, running, finished, selectedMinutes, secondsLeft]);
 
   // ── Timer ──
+  const playBuzzer = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const playTone = (freq: number, start: number, dur: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.5, ctx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + start + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + dur);
+      };
+      playTone(440, 0, 0.6);
+      playTone(440, 0.7, 0.6);
+      playTone(440, 1.4, 1.2);
+    } catch {}
+  }, []);
+
   const clearTimer = () => { if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = null; };
   const handleFinish = useCallback(() => {
     clearTimer(); setRunning(false); setFinished(true);
+    playBuzzer();
     pushMatchState({ r: false, f: true, sl: 0 });
-  }, [pushMatchState]);
+  }, [pushMatchState, playBuzzer]);
   useEffect(() => {
     if (running) {
       intervalRef.current = setInterval(() => {
