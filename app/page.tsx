@@ -754,42 +754,39 @@ export default function GamePage() {
     try {
       const ctx = new AudioContext();
       const now = ctx.currentTime;
-      // Deep foghorn: layered low-frequency oscillators with slow fade
-      const freqs = [80, 120, 160];
-      freqs.forEach(freq => {
+      const dur = 5;
+
+      // Main deep drone — single long steamboat horn
+      [55, 110, 165].forEach(freq => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = "sawtooth";
         osc.frequency.setValueAtTime(freq, now);
-        osc.frequency.linearRampToValueAtTime(freq * 0.85, now + 3);
-        gain.gain.setValueAtTime(0.6, now);
-        gain.gain.setValueAtTime(0.6, now + 1.5);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 3);
+        osc.frequency.linearRampToValueAtTime(freq * 0.92, now + dur);
+        // Slow swell in, long sustain, slow fade out
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(freq === 55 ? 0.7 : 0.3, now + 0.4);
+        gain.gain.setValueAtTime(freq === 55 ? 0.7 : 0.3, now + dur - 1.5);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
         osc.connect(gain);
         gain.connect(ctx.destination);
         osc.start(now);
-        osc.stop(now + 3);
+        osc.stop(now + dur);
       });
-      // Second blast after a short gap
-      setTimeout(() => {
-        try {
-          const now2 = ctx.currentTime;
-          freqs.forEach(freq => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = "sawtooth";
-            osc.frequency.setValueAtTime(freq, now2);
-            osc.frequency.linearRampToValueAtTime(freq * 0.85, now2 + 3.5);
-            gain.gain.setValueAtTime(0.7, now2);
-            gain.gain.setValueAtTime(0.7, now2 + 2);
-            gain.gain.exponentialRampToValueAtTime(0.01, now2 + 3.5);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(now2);
-            osc.stop(now2 + 3.5);
-          });
-        } catch {}
-      }, 3500);
+
+      // Low sub-bass rumble for body
+      const sub = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      sub.type = "sine";
+      sub.frequency.value = 36;
+      subGain.gain.setValueAtTime(0, now);
+      subGain.gain.linearRampToValueAtTime(0.5, now + 0.5);
+      subGain.gain.setValueAtTime(0.5, now + dur - 1.5);
+      subGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      sub.connect(subGain);
+      subGain.connect(ctx.destination);
+      sub.start(now);
+      sub.stop(now + dur);
     } catch {}
   }, []);
 
