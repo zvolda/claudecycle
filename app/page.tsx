@@ -302,30 +302,27 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
   });
   const alphaTeams = [...teams].sort((a, b) => a.localeCompare(b));
 
-  return (
-    <>
-      {label && <h3 className={`text-[1.5vw] font-bold shrink-0 ${th.textPrimary}`}>{label}</h3>}
-      <div className="shrink-0 flex justify-center">
-        <div className="w-fit">
-          <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
-            <span className="w-[20vw]">Team</span>
-            <span className="w-[5vw] text-center">Points</span>
-            <span className="w-[6vw] text-center">Score</span>
-          </div>
-          {rankedTeams.map((team) => {
-            const st = standMap.get(team);
-            return (
-              <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
-                <span className="w-[20vw] font-semibold">{team}</span>
-                <span className="w-[5vw] text-center font-black">{st?.points ?? 0}</span>
-                <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
-              </div>
-            );
-          })}
+  const content = (
+    <div className="inline-flex flex-col gap-[1.5vh]">
+      <div className="w-fit">
+        <div className={`flex items-center py-[0.4vh] text-[1.4vw] ${th.textMuted}`}>
+          <span className="w-[20vw]">Team</span>
+          <span className="w-[5vw] text-center">Points</span>
+          <span className="w-[6vw] text-center">Score</span>
         </div>
+        {rankedTeams.map((team) => {
+          const st = standMap.get(team);
+          return (
+            <div key={team} className={`flex items-center py-[0.4vh] text-[1.8vw] ${th.cellText}`}>
+              <span className="w-[20vw] font-semibold">{team}</span>
+              <span className="w-[5vw] text-center font-black">{st?.points ?? 0}</span>
+              <span className={`w-[6vw] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</span>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="flex justify-center">
+      <div>
         {loadingGames ? (
           <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
         ) : (
@@ -355,8 +352,19 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
         </table>
         )}
       </div>
-    </>
+    </div>
   );
+
+  if (label) {
+    return (
+      <div className={`rounded-xl p-[1.5vw] ${th.panel}`}>
+        <h3 className={`text-[1.5vw] font-bold mb-[1vh] ${th.textPrimary}`}>{label}</h3>
+        <div className="flex justify-center">{content}</div>
+      </div>
+    );
+  }
+
+  return <div className="flex justify-center">{content}</div>;
 }
 
 // ── Results view (shared between main app and read-only view) ────────────────
