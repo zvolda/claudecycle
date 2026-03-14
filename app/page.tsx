@@ -450,8 +450,13 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
   playoffs?: PlayoffMatch[] | null;
   onPlayoffsUpdate?: (p: PlayoffMatch[]) => void;
 }) {
-  const groupA = twoGroups ? teams.filter(t => (teamGroups?.[t] ?? "A") === "A") : [];
-  const groupB = twoGroups ? teams.filter(t => teamGroups?.[t] === "B") : [];
+  const hasGroups = twoGroups && teamGroups && Object.keys(teamGroups).length > 0;
+  const uniqueGroups = hasGroups
+    ? [...new Set(Object.values(teamGroups))].sort()
+    : [];
+  const groupedTeams = hasGroups
+    ? uniqueGroups.map(g => ({ label: `Group ${g}`, teams: teams.filter(t => (teamGroups[t] ?? "A") === g) }))
+    : [];
 
   const addMatch = () => {
     if (!onPlayoffsUpdate) return;
@@ -486,15 +491,12 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
       {fetchError && <p className="text-[1.2vw] text-red-500 shrink-0">{fetchError}</p>}
       {teams.length === 0 ? (
         <p className={`text-[1.3vw] ${th.textMuted}`}>No teams created yet.</p>
-      ) : twoGroups ? (
+      ) : hasGroups ? (
         <>
-          {groupA.length > 0 && (
-            <GroupBlock label="Group A" teams={groupA} games={games} th={th} loadingGames={loadingGames} onSaveResult={onSaveResult} />
-          )}
-          {groupB.length > 0 && (
-            <GroupBlock label="Group B" teams={groupB} games={games} th={th} loadingGames={loadingGames} onSaveResult={onSaveResult} />
-          )}
-          {groupA.length === 0 && groupB.length === 0 && (
+          {groupedTeams.map(g => g.teams.length > 0 && (
+            <GroupBlock key={g.label} label={g.label} teams={g.teams} games={games} th={th} loadingGames={loadingGames} onSaveResult={onSaveResult} />
+          ))}
+          {groupedTeams.every(g => g.teams.length === 0) && (
             <p className={`text-[1.3vw] ${th.textMuted}`}>No teams assigned to groups yet.</p>
           )}
         </>
@@ -531,7 +533,7 @@ export default function GamePage() {
   const [checkingStorage, setCheckingStorage] = useState(true);
   const [showPin, setShowPin] = useState(false);
   const [tournamentName, setTournamentName] = useState("");
-  const [twoGroups, setTwoGroups] = useState(false);
+  const [groupCount, setGroupCount] = useState(1);
   const [teamGroups, setTeamGroups] = useState<Record<string, string>>({});
   const [playoffs, setPlayoffs] = useState<PlayoffMatch[] | null>(null);
 
@@ -573,7 +575,7 @@ export default function GamePage() {
           setRoom(r);
           setTeams(r.teams);
           setTournamentName(r.name);
-          setTwoGroups(r.two_groups);
+          setGroupCount(r.two_groups ? Math.max(2, new Set(Object.values(r.team_groups ?? {})).size) : 1);
           setTeamGroups(r.team_groups ?? {});
           setPlayoffs(Array.isArray(r.playoffs) ? r.playoffs : null);
           setSelectedMinutes(r.duration_minutes);
@@ -622,7 +624,7 @@ export default function GamePage() {
       setRoom(r);
       setTeams(r.teams);
       setTournamentName(r.name);
-      setTwoGroups(r.two_groups);
+      setGroupCount(r.two_groups ? Math.max(2, new Set(Object.values(r.team_groups ?? {})).size) : 1);
       setTeamGroups(r.team_groups ?? {});
       setPlayoffs(Array.isArray(r.playoffs) ? r.playoffs : null);
       setSelectedMinutes(r.duration_minutes);
@@ -644,7 +646,7 @@ export default function GamePage() {
       setRoom(r);
       setTeams(r.teams);
       setTournamentName(r.name);
-      setTwoGroups(r.two_groups);
+      setGroupCount(r.two_groups ? Math.max(2, new Set(Object.values(r.team_groups ?? {})).size) : 1);
       setTeamGroups(r.team_groups ?? {});
       setPlayoffs(Array.isArray(r.playoffs) ? r.playoffs : null);
       setSelectedMinutes(r.duration_minutes);
@@ -667,7 +669,7 @@ export default function GamePage() {
     setTab("game");
     setShowPin(false);
     setTournamentName("");
-    setTwoGroups(false);
+    setGroupCount(1);
     setTeamGroups({});
     setPlayoffs(null);
   };
@@ -706,7 +708,7 @@ export default function GamePage() {
     const updated = [...teams, n]; persistTeams(updated); setNewTeam("");
     if (updated.length === 1) setPlayer1(n);
     if (updated.length === 2) setPlayer2(n);
-    if (twoGroups) persistGroupSettings(twoGroups, { ...teamGroups, [n]: "A" });
+    if (groupCount > 1) persistGroupSettings(groupCount, { ...teamGroups, [n]: "A" });
   };
   const removeTeam = (n: string) => persistTeams(teams.filter((t) => t !== n));
 
@@ -716,15 +718,17 @@ export default function GamePage() {
   };
 
   // ── Group settings ──
-  const persistGroupSettings = (tg: boolean, groups: Record<string, string>) => {
-    setTwoGroups(tg);
+  const GROUP_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const persistGroupSettings = (gc: number, groups: Record<string, string>) => {
+    setGroupCount(gc);
     setTeamGroups(groups);
-    if (room) updateRoomGroupSettings(room.id, tg, groups).catch(() => {});
+    if (room) updateRoomGroupSettings(room.id, gc > 1, groups).catch(() => {});
   };
-  const toggleTeamGroup = (teamName: string) => {
+  const cycleTeamGroup = (teamName: string) => {
     const current = teamGroups[teamName] ?? "A";
-    const next = current === "A" ? "B" : "A";
-    persistGroupSettings(twoGroups, { ...teamGroups, [teamName]: next });
+    const idx = GROUP_LETTERS.indexOf(current);
+    const next = GROUP_LETTERS[(idx + 1) % groupCount];
+    persistGroupSettings(groupCount, { ...teamGroups, [teamName]: next });
   };
 
   // ── Push live match state to Supabase ──
@@ -1091,10 +1095,26 @@ export default function GamePage() {
           <div className={`flex-1 rounded-2xl p-[2vw] flex flex-col gap-[1.5vh] min-h-0 ${th.panel}`}>
             <div className="flex items-center justify-between shrink-0">
               <h2 className={`text-[1.8vw] font-bold ${th.textPrimary}`}>Teams</h2>
-              <button onClick={() => persistGroupSettings(!twoGroups, teamGroups)}
-                className={`px-[1.2vw] py-[0.5vh] rounded-xl font-bold text-[1.1vw] transition-colors ${twoGroups ? th.presetOn : th.presetOff}`}>
-                Two Groups
-              </button>
+              <div className="flex items-center gap-[0.5vw]">
+                <span className={`text-[1.1vw] ${th.textMuted}`}>Groups:</span>
+                {[1, 2, 3, 4].map(n => (
+                  <button key={n} onClick={() => {
+                    const groups = { ...teamGroups };
+                    // Reassign teams that exceed new group count
+                    if (n > 1) {
+                      teams.forEach(t => {
+                        const idx = GROUP_LETTERS.indexOf(groups[t] ?? "A");
+                        if (idx >= n) groups[t] = "A";
+                        if (!groups[t]) groups[t] = "A";
+                      });
+                    }
+                    persistGroupSettings(n, groups);
+                  }}
+                    className={`w-[2.2vw] h-[2.2vw] rounded-lg font-bold text-[1.1vw] transition-colors ${groupCount === n ? th.presetOn : th.presetOff}`}>
+                    {n}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex gap-[1vw] shrink-0">
               <input value={newTeam} onChange={(e) => setNewTeam(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTeam()}
@@ -1109,9 +1129,11 @@ export default function GamePage() {
                 <div key={t} className={`flex items-center justify-between rounded-xl px-[1.5vw] py-[1.2vh] ${th.inner}`}>
                   <div className="flex items-center gap-[1vw]">
                     <span className={`text-[1.5vw] font-semibold ${th.textPrimary}`}>{t}</span>
-                    {twoGroups && (
-                      <button onClick={() => toggleTeamGroup(t)}
-                        className={`px-[0.8vw] py-[0.2vh] rounded-lg font-bold text-[1.1vw] transition-colors ${(teamGroups[t] ?? "A") === "A" ? th.presetOn : "bg-blue-600 text-white border border-blue-600"}`}>
+                    {groupCount > 1 && (
+                      <button onClick={() => cycleTeamGroup(t)}
+                        className={`px-[0.8vw] py-[0.2vh] rounded-lg font-bold text-[1.1vw] transition-colors ${
+                          {"A": th.presetOn, "B": "bg-blue-600 text-white border border-blue-600", "C": "bg-emerald-600 text-white border border-emerald-600", "D": "bg-amber-600 text-white border border-amber-600"}[teamGroups[t] ?? "A"] ?? th.presetOn
+                        }`}>
                         {teamGroups[t] ?? "A"}
                       </button>
                     )}
@@ -1199,7 +1221,7 @@ export default function GamePage() {
           fetchGames={fetchGames}
           loadingGames={loadingGames}
           fetchError={fetchError}
-          twoGroups={twoGroups}
+          twoGroups={groupCount > 1}
           teamGroups={teamGroups}
           onSaveResult={saveResult}
           playoffs={playoffs}
