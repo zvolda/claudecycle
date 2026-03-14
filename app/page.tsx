@@ -325,7 +325,7 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
         </div>
       </div>
 
-      <div className="overflow-auto flex justify-center">
+      <div className="flex justify-center">
         {loadingGames ? (
           <p className={`text-[1.3vw] ${th.textMuted}`}>Loading results...</p>
         ) : (
