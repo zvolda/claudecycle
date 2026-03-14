@@ -746,41 +746,67 @@ export default function GamePage() {
   }, [room, player1, player2, score1, score2, half, running, finished, selectedMinutes, secondsLeft]);
 
   // ── Timer ──
-  const playBuzzer = useCallback(() => {
+  const playFoghorn = useCallback(() => {
     try {
       const ctx = new AudioContext();
-      const playTone = (freq: number, start: number, dur: number) => {
+      const now = ctx.currentTime;
+      // Deep foghorn: layered low-frequency oscillators with slow fade
+      const freqs = [80, 120, 160];
+      freqs.forEach(freq => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = "square";
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.5, ctx.currentTime + start);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + start + dur);
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.linearRampToValueAtTime(freq * 0.85, now + 3);
+        gain.gain.setValueAtTime(0.6, now);
+        gain.gain.setValueAtTime(0.6, now + 1.5);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 3);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(ctx.currentTime + start);
-        osc.stop(ctx.currentTime + start + dur);
-      };
-      playTone(440, 0, 0.6);
-      playTone(440, 0.7, 0.6);
-      playTone(440, 1.4, 1.2);
+        osc.start(now);
+        osc.stop(now + 3);
+      });
+      // Second blast after a short gap
+      setTimeout(() => {
+        try {
+          const now2 = ctx.currentTime;
+          freqs.forEach(freq => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = "sawtooth";
+            osc.frequency.setValueAtTime(freq, now2);
+            osc.frequency.linearRampToValueAtTime(freq * 0.85, now2 + 3.5);
+            gain.gain.setValueAtTime(0.7, now2);
+            gain.gain.setValueAtTime(0.7, now2 + 2);
+            gain.gain.exponentialRampToValueAtTime(0.01, now2 + 3.5);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now2);
+            osc.stop(now2 + 3.5);
+          });
+        } catch {}
+      }, 3500);
     } catch {}
   }, []);
 
   const clearTimer = () => { if (intervalRef.current) clearInterval(intervalRef.current); intervalRef.current = null; };
-  const handleFinish = useCallback(() => {
+  const finishRef = useRef<() => void>(() => {});
+  finishRef.current = () => {
     clearTimer(); setRunning(false); setFinished(true);
-    playBuzzer();
+    playFoghorn();
     pushMatchState({ r: false, f: true, sl: 0 });
-  }, [pushMatchState, playBuzzer]);
+  };
   useEffect(() => {
     if (running) {
       intervalRef.current = setInterval(() => {
-        setSecondsLeft((prev) => { if (prev <= 1) { handleFinish(); return 0; } return prev - 1; });
+        setSecondsLeft((prev) => {
+          if (prev <= 1) { finishRef.current(); return 0; }
+          return prev - 1;
+        });
       }, 1000);
     }
     return clearTimer;
-  }, [running, handleFinish]);
+  }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectPreset = (m: number) => {
     clearTimer(); setRunning(false); setFinished(false); setEditingTime(false);
