@@ -532,6 +532,7 @@ export default function GamePage() {
   const [roomError, setRoomError] = useState("");
   const [checkingStorage, setCheckingStorage] = useState(true);
   const [showPin, setShowPin] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [tournamentName, setTournamentName] = useState("");
   const [groupCount, setGroupCount] = useState(1);
   const [teamGroups, setTeamGroups] = useState<Record<string, string>>({});
@@ -1217,10 +1218,10 @@ export default function GamePage() {
                     {showPin ? "Hide" : "Show"}
                   </button>
                   {showPin && (
-                    <button onClick={() => { navigator.clipboard.writeText(room.pin); }}
+                    <button onClick={() => { navigator.clipboard.writeText(room.pin); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
                       className={`text-[1.1vw] leading-none transition-colors px-[0.3vw] ${th.btnSecondary} rounded-md`}
                       title="Copy code">
-                      Copy
+                      {copied ? "Copied!" : "Copy"}
                     </button>
                   )}
                 </span>
