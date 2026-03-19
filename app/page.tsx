@@ -1038,7 +1038,8 @@ export default function GamePage() {
 
           {/* Half indicator */}
           <div className="absolute flex justify-center" style={{ left: "24%", right: "24%", top: "22%" }}>
-            <span className={`text-[3vw] font-bold ${th.textMuted}`}>{half === 1 ? "1st" : "2nd"}</span>
+            <button onClick={() => { const next: 1 | 2 = half === 1 ? 2 : 1; setHalf(next); setTimeout(() => pushMatchState({ h: next }), 0); }}
+              className={`text-[3vw] font-bold cursor-pointer hover:opacity-70 transition-opacity ${th.textMuted}`}>{half === 1 ? "1st" : "2nd"}</button>
           </div>
 
           {/* Timer */}
@@ -1079,11 +1080,11 @@ export default function GamePage() {
           <div className="absolute bottom-[1.5%] left-1/2 -translate-x-1/2 flex flex-nowrap items-center gap-[1.5vw]">
             {teams.length > 0 ? (
               <>
-                <select value={player1} onChange={(e) => { setPlayer1(e.target.value); setTimeout(() => pushMatchState({ p1: e.target.value }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
+                <select value={player1} onChange={(e) => { setPlayer1(e.target.value); setHalf(1); setScore1(0); setScore2(0); clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60); setTimeout(() => pushMatchState({ p1: e.target.value, h: 1, s1: 0, s2: 0, r: false, f: false, sl: selectedMinutes * 60 }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
                   {teams.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
                 <button onClick={swapTeams} title="Swap teams and scores" className={`text-[1.8vw] font-bold leading-none px-[0.3vw] transition-colors ${th.swap}`}>⇄</button>
-                <select value={player2} onChange={(e) => { setPlayer2(e.target.value); setTimeout(() => pushMatchState({ p2: e.target.value }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
+                <select value={player2} onChange={(e) => { setPlayer2(e.target.value); setHalf(1); setScore1(0); setScore2(0); clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60); setTimeout(() => pushMatchState({ p2: e.target.value, h: 1, s1: 0, s2: 0, r: false, f: false, sl: selectedMinutes * 60 }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
                   {teams.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </>
