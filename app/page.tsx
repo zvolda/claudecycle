@@ -467,43 +467,28 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
     try {
       const html2canvas = (await import("html2canvas-pro")).default;
       const { jsPDF } = await import("jspdf");
-      const el = pdfRef.current;
 
-      // Temporarily unlock all ancestor overflow/height constraints
-      const saved: { el: HTMLElement; overflow: string; minH: string; maxH: string; h: string; flex: string }[] = [];
-      let ancestor: HTMLElement | null = el.parentElement;
-      while (ancestor) {
-        saved.push({
-          el: ancestor,
-          overflow: ancestor.style.overflow,
-          minH: ancestor.style.minHeight,
-          maxH: ancestor.style.maxHeight,
-          h: ancestor.style.height,
-          flex: ancestor.style.flex,
-        });
-        ancestor.style.overflow = "visible";
-        ancestor.style.minHeight = "auto";
-        ancestor.style.maxHeight = "none";
-        ancestor.style.height = "auto";
-        ancestor.style.flex = "none";
-        ancestor = ancestor.parentElement;
-      }
+      // Clone content into an off-screen container with no constraints
+      const clone = pdfRef.current.cloneNode(true) as HTMLElement;
+      const wrapper = document.createElement("div");
+      wrapper.style.position = "absolute";
+      wrapper.style.left = "-9999px";
+      wrapper.style.top = "0";
+      wrapper.style.width = pdfRef.current.scrollWidth + "px";
+      wrapper.style.overflow = "visible";
+      wrapper.style.height = "auto";
+      wrapper.style.background = window.getComputedStyle(document.body).backgroundColor || "#000";
+      wrapper.appendChild(clone);
+      document.body.appendChild(wrapper);
 
-      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: null });
-
-      // Restore all ancestors
-      saved.forEach(s => {
-        s.el.style.overflow = s.overflow;
-        s.el.style.minHeight = s.minH;
-        s.el.style.maxHeight = s.maxH;
-        s.el.style.height = s.h;
-        s.el.style.flex = s.flex;
-      });
+      // Copy computed styles for all stylesheets
+      const canvas = await html2canvas(clone, { scale: 2, useCORS: true, backgroundColor: wrapper.style.background });
+      document.body.removeChild(wrapper);
 
       const imgData = canvas.toDataURL("image/png");
       const imgW = canvas.width;
       const imgH = canvas.height;
-      const pdfW = 210; // A4 width in mm
+      const pdfW = 210;
       const pdfH = (imgH * pdfW) / imgW;
       const pdf = new jsPDF({ orientation: pdfH > 297 ? "landscape" : "portrait", unit: "mm", format: "a4" });
       const pageH = pdf.internal.pageSize.getHeight();
