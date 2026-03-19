@@ -754,29 +754,55 @@ export default function GamePage() {
     try {
       const ctx = new AudioContext();
       const now = ctx.currentTime;
-      const freq = 1800;
-      const beepOn = 0.08;
-      const beepOff = 0.08;
-      const groupGap = 0.4;
-      const beepsPerGroup = 4;
-      const groups = 3;
 
-      let t = now;
-      for (let g = 0; g < groups; g++) {
-        for (let b = 0; b < beepsPerGroup; b++) {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = "square";
-          osc.frequency.value = freq;
-          gain.gain.setValueAtTime(0.5, t);
-          gain.gain.setValueAtTime(0, t + beepOn);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(t);
-          osc.stop(t + beepOn);
-          t += beepOn + beepOff;
-        }
-        t += groupGap;
+      // Classic metallic alarm clock ring: rapid oscillating hits
+      const ringFreq = 2200;
+      const modFreq = 20; // tremolo speed — rapid ringing
+      const dur = 4;
+      const burstOn = 0.8;
+      const burstOff = 0.4;
+
+      // Two ring bursts
+      for (let burst = 0; burst < 2; burst++) {
+        const start = now + burst * (burstOn + burstOff);
+
+        // Main bell tone
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = ringFreq;
+
+        // Second harmonic for metallic character
+        const osc2 = ctx.createOscillator();
+        osc2.type = "sine";
+        osc2.frequency.value = ringFreq * 2.76;
+
+        // Tremolo LFO — makes the rapid "brrring" pulsing
+        const lfo = ctx.createOscillator();
+        const lfoGain = ctx.createGain();
+        lfo.type = "sine";
+        lfo.frequency.value = modFreq;
+        lfoGain.gain.value = 0.4;
+        lfo.connect(lfoGain);
+
+        const mainGain = ctx.createGain();
+        mainGain.gain.value = 0.5;
+        lfoGain.connect(mainGain.gain);
+
+        const harmGain = ctx.createGain();
+        harmGain.gain.value = 0.15;
+        lfoGain.connect(harmGain.gain);
+
+        osc.connect(mainGain);
+        osc2.connect(harmGain);
+        mainGain.connect(ctx.destination);
+        harmGain.connect(ctx.destination);
+
+        osc.start(start);
+        osc2.start(start);
+        lfo.start(start);
+        osc.stop(start + burstOn);
+        osc2.stop(start + burstOn);
+        lfo.stop(start + burstOn);
       }
     } catch {}
   }, []);
