@@ -337,10 +337,14 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
               {alphaTeams.map((t, i) => (
                 <th key={i} className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-bold min-w-[8vw] sm:min-w-[3.5vw]`}>{i + 1}</th>
               ))}
+              <th className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-bold`}>Pts</th>
+              <th className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-bold`}>Score</th>
             </tr>
           </thead>
           <tbody>
-            {alphaTeams.map((team, ri) => (
+            {alphaTeams.map((team, ri) => {
+              const st = standMap.get(team);
+              return (
               <tr key={team}>
                 <td className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-left font-semibold whitespace-nowrap`}>{team}</td>
                 {alphaTeams.map((opp, ci) => {
@@ -350,8 +354,11 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
                     <EditableCell key={ci} team={team} opp={opp} result={result} th={th} onSave={onSaveResult} />
                   );
                 })}
+                <td className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-black`}>{st?.points ?? 0}</td>
+                <td className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
         )}
