@@ -303,6 +303,7 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
     return (sb?.gf ?? 0) - (sa?.gf ?? 0);
   });
   const alphaTeams = [...teams].sort((a, b) => a.localeCompare(b));
+  const rankMap = new Map(rankedTeams.map((t, i) => [t, i + 1]));
 
   const content = (
     <div className="inline-flex flex-col gap-[1.5vh] w-full sm:w-auto">
@@ -339,6 +340,7 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
               ))}
               <th className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-bold`}>Pts</th>
               <th className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-bold`}>Score</th>
+              <th className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-bold`}>#</th>
             </tr>
           </thead>
           <tbody>
@@ -356,6 +358,7 @@ function GroupBlock({ label, teams, games, th, loadingGames, onSaveResult }: {
                 })}
                 <td className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-black`}>{st?.points ?? 0}</td>
                 <td className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center ${th.textSec}`}>{st ? `${st.gf}:${st.ga}` : "0:0"}</td>
+                <td className={`border ${th.cellBorder} px-[1.5vw] sm:px-[0.6vw] py-[0.5vh] text-center font-black`}>{rankMap.get(team) ?? ""}</td>
               </tr>
               );
             })}
