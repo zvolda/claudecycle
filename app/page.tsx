@@ -460,53 +460,24 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
     : [];
 
   const pdfRef = useRef<HTMLDivElement>(null);
-  const [exporting, setExporting] = useState(false);
-  const exportPdf = async () => {
+  const exportPdf = () => {
     if (!pdfRef.current) return;
-    setExporting(true);
-    try {
-      const html2canvas = (await import("html2canvas-pro")).default;
-      const { jsPDF } = await import("jspdf");
+    const el = pdfRef.current;
+    const win = window.open("", "_blank");
+    if (!win) return;
 
-      // Clone content into an off-screen container with no constraints
-      const clone = pdfRef.current.cloneNode(true) as HTMLElement;
-      const wrapper = document.createElement("div");
-      wrapper.style.position = "absolute";
-      wrapper.style.left = "-9999px";
-      wrapper.style.top = "0";
-      wrapper.style.width = pdfRef.current.scrollWidth + "px";
-      wrapper.style.overflow = "visible";
-      wrapper.style.height = "auto";
-      wrapper.style.background = window.getComputedStyle(document.body).backgroundColor || "#000";
-      wrapper.appendChild(clone);
-      document.body.appendChild(wrapper);
+    // Grab all stylesheets from the page
+    const styles = Array.from(document.styleSheets).map(ss => {
+      try { return Array.from(ss.cssRules).map(r => r.cssText).join("\n"); } catch { return ""; }
+    }).join("\n");
 
-      // Copy computed styles for all stylesheets
-      const canvas = await html2canvas(clone, { scale: 2, useCORS: true, backgroundColor: wrapper.style.background });
-      document.body.removeChild(wrapper);
-
-      const imgData = canvas.toDataURL("image/png");
-      const imgW = canvas.width;
-      const imgH = canvas.height;
-      const pdfW = 210;
-      const pdfH = (imgH * pdfW) / imgW;
-      const pdf = new jsPDF({ orientation: pdfH > 297 ? "landscape" : "portrait", unit: "mm", format: "a4" });
-      const pageH = pdf.internal.pageSize.getHeight();
-      if (pdfH <= pageH) {
-        pdf.addImage(imgData, "PNG", 0, 0, pdfW, pdfH);
-      } else {
-        let y = 0;
-        while (y < pdfH) {
-          if (y > 0) pdf.addPage();
-          pdf.addImage(imgData, "PNG", 0, -y, pdfW, pdfH);
-          y += pageH;
-        }
-      }
-      pdf.save(`${tournamentName || "results"}.pdf`);
-    } catch (e) {
-      console.error("PDF export failed:", e);
-    }
-    setExporting(false);
+    const bg = window.getComputedStyle(document.body).backgroundColor || "#000";
+    win.document.write(`<!DOCTYPE html><html><head><style>${styles}
+      html, body { margin: 0; padding: 20px; background: ${bg}; }
+      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    </style></head><body>${el.outerHTML}</body></html>`);
+    win.document.close();
+    setTimeout(() => { win.print(); win.close(); }, 500);
   };
 
   const addMatch = () => {
@@ -531,9 +502,9 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
       <div className="flex items-center justify-between shrink-0">
         <h2 className={`text-[5vw] sm:text-[1.8vw] font-bold ${th.textPrimary}`}>Results</h2>
         <div className="flex gap-[1vw]">
-          <button onClick={exportPdf} disabled={exporting}
-            className={`text-[3vw] sm:text-[1.1vw] transition-colors px-[3vw] sm:px-[1vw] py-[0.5vh] rounded-lg disabled:opacity-40 ${th.btnSecondary}`}>
-            {exporting ? "Exporting…" : "PDF"}
+          <button onClick={exportPdf}
+            className={`text-[3vw] sm:text-[1.1vw] transition-colors px-[3vw] sm:px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>
+            PDF
           </button>
           {fetchGames && (
             <button onClick={fetchGames} className={`text-[3vw] sm:text-[1.1vw] transition-colors px-[3vw] sm:px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
