@@ -468,19 +468,38 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
       const html2canvas = (await import("html2canvas-pro")).default;
       const { jsPDF } = await import("jspdf");
       const el = pdfRef.current;
-      // Temporarily remove overflow clipping so full content is captured
-      const scrollParent = el.parentElement;
-      const prevOverflow = scrollParent?.style.overflow ?? "";
-      const prevMinH = scrollParent?.style.minHeight ?? "";
-      const prevMaxH = scrollParent?.style.maxHeight ?? "";
-      const prevH = scrollParent?.style.height ?? "";
-      if (scrollParent) {
-        scrollParent.style.overflow = "visible";
-        scrollParent.style.minHeight = "auto";
-        scrollParent.style.maxHeight = "none";
-        scrollParent.style.height = "auto";
+
+      // Temporarily unlock all ancestor overflow/height constraints
+      const saved: { el: HTMLElement; overflow: string; minH: string; maxH: string; h: string; flex: string }[] = [];
+      let ancestor: HTMLElement | null = el.parentElement;
+      while (ancestor) {
+        saved.push({
+          el: ancestor,
+          overflow: ancestor.style.overflow,
+          minH: ancestor.style.minHeight,
+          maxH: ancestor.style.maxHeight,
+          h: ancestor.style.height,
+          flex: ancestor.style.flex,
+        });
+        ancestor.style.overflow = "visible";
+        ancestor.style.minHeight = "auto";
+        ancestor.style.maxHeight = "none";
+        ancestor.style.height = "auto";
+        ancestor.style.flex = "none";
+        ancestor = ancestor.parentElement;
       }
+
       const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: null });
+
+      // Restore all ancestors
+      saved.forEach(s => {
+        s.el.style.overflow = s.overflow;
+        s.el.style.minHeight = s.minH;
+        s.el.style.maxHeight = s.maxH;
+        s.el.style.height = s.h;
+        s.el.style.flex = s.flex;
+      });
+
       const imgData = canvas.toDataURL("image/png");
       const imgW = canvas.width;
       const imgH = canvas.height;
@@ -491,20 +510,12 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
       if (pdfH <= pageH) {
         pdf.addImage(imgData, "PNG", 0, 0, pdfW, pdfH);
       } else {
-        // Multi-page
         let y = 0;
         while (y < pdfH) {
           if (y > 0) pdf.addPage();
           pdf.addImage(imgData, "PNG", 0, -y, pdfW, pdfH);
           y += pageH;
         }
-      }
-      // Restore parent styles
-      if (scrollParent) {
-        scrollParent.style.overflow = prevOverflow;
-        scrollParent.style.minHeight = prevMinH;
-        scrollParent.style.maxHeight = prevMaxH;
-        scrollParent.style.height = prevH;
       }
       pdf.save(`${tournamentName || "results"}.pdf`);
     } catch (e) {
