@@ -1216,6 +1216,13 @@ export default function GamePage() {
                     title={showPin ? "Hide PIN" : "Show PIN"}>
                     {showPin ? "Hide" : "Show"}
                   </button>
+                  {showPin && (
+                    <button onClick={() => { navigator.clipboard.writeText(room.pin); }}
+                      className={`text-[1.1vw] leading-none transition-colors px-[0.3vw] ${th.btnSecondary} rounded-md`}
+                      title="Copy code">
+                      Copy
+                    </button>
+                  )}
                 </span>
                 <button onClick={handleLeaveRoom}
                   className="px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.2vw] transition-colors text-red-500 border border-red-500/30 hover:bg-red-500/10">
