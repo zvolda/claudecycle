@@ -750,43 +750,34 @@ export default function GamePage() {
   }, [room, player1, player2, score1, score2, half, running, finished, selectedMinutes, secondsLeft]);
 
   // ── Timer ──
-  const playFoghorn = useCallback(() => {
+  const playAlarm = useCallback(() => {
     try {
       const ctx = new AudioContext();
       const now = ctx.currentTime;
-      const dur = 5;
+      const freq = 1800;
+      const beepOn = 0.08;
+      const beepOff = 0.08;
+      const groupGap = 0.4;
+      const beepsPerGroup = 4;
+      const groups = 3;
 
-      // Main deep drone — single long steamboat horn
-      [55, 110, 165].forEach(freq => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(freq, now);
-        osc.frequency.linearRampToValueAtTime(freq * 0.92, now + dur);
-        // Slow swell in, long sustain, slow fade out
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(freq === 55 ? 0.7 : 0.3, now + 0.4);
-        gain.gain.setValueAtTime(freq === 55 ? 0.7 : 0.3, now + dur - 1.5);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + dur);
-      });
-
-      // Low sub-bass rumble for body
-      const sub = ctx.createOscillator();
-      const subGain = ctx.createGain();
-      sub.type = "sine";
-      sub.frequency.value = 36;
-      subGain.gain.setValueAtTime(0, now);
-      subGain.gain.linearRampToValueAtTime(0.5, now + 0.5);
-      subGain.gain.setValueAtTime(0.5, now + dur - 1.5);
-      subGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-      sub.connect(subGain);
-      subGain.connect(ctx.destination);
-      sub.start(now);
-      sub.stop(now + dur);
+      let t = now;
+      for (let g = 0; g < groups; g++) {
+        for (let b = 0; b < beepsPerGroup; b++) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "square";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.5, t);
+          gain.gain.setValueAtTime(0, t + beepOn);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t);
+          osc.stop(t + beepOn);
+          t += beepOn + beepOff;
+        }
+        t += groupGap;
+      }
     } catch {}
   }, []);
 
@@ -794,7 +785,7 @@ export default function GamePage() {
   const finishRef = useRef<() => void>(() => {});
   finishRef.current = () => {
     clearTimer(); setRunning(false); setFinished(true);
-    playFoghorn();
+    playAlarm();
     pushMatchState({ r: false, f: true, sl: 0 });
   };
   useEffect(() => {
