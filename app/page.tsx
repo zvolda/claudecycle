@@ -436,7 +436,7 @@ function PlayoffCard({ match, teams, th, onUpdate, onRemove }: {
 }
 
 // ── Results view (shared between main app and read-only view) ────────────────
-function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups, currentMatch, onSaveResult, playoffs, onPlayoffsUpdate }: {
+function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, twoGroups, teamGroups, currentMatch, onSaveResult, playoffs, onPlayoffsUpdate, tournamentName }: {
   teams: string[];
   games: Game[];
   th: typeof T[ThemeKey];
@@ -449,6 +449,7 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
   onSaveResult?: (teamA: string, teamB: string, scoreA: number, scoreB: number) => Promise<void>;
   playoffs?: PlayoffMatch[] | null;
   onPlayoffsUpdate?: (p: PlayoffMatch[]) => void;
+  tournamentName?: string;
 }) {
   const hasGroups = twoGroups && teamGroups && Object.keys(teamGroups).length > 0;
   const uniqueGroups = hasGroups
@@ -457,6 +458,41 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
   const groupedTeams = hasGroups
     ? uniqueGroups.map(g => ({ label: `Group ${g}`, teams: teams.filter(t => (teamGroups[t] ?? "A") === g) }))
     : [];
+
+  const pdfRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const exportPdf = async () => {
+    if (!pdfRef.current) return;
+    setExporting(true);
+    try {
+      const html2canvas = (await import("html2canvas-pro")).default;
+      const { jsPDF } = await import("jspdf");
+      const el = pdfRef.current;
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: null });
+      const imgData = canvas.toDataURL("image/png");
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+      const pdfW = 210; // A4 width in mm
+      const pdfH = (imgH * pdfW) / imgW;
+      const pdf = new jsPDF({ orientation: pdfH > 297 ? "landscape" : "portrait", unit: "mm", format: "a4" });
+      const pageH = pdf.internal.pageSize.getHeight();
+      if (pdfH <= pageH) {
+        pdf.addImage(imgData, "PNG", 0, 0, pdfW, pdfH);
+      } else {
+        // Multi-page
+        let y = 0;
+        while (y < pdfH) {
+          if (y > 0) pdf.addPage();
+          pdf.addImage(imgData, "PNG", 0, -y, pdfW, pdfH);
+          y += pageH;
+        }
+      }
+      pdf.save(`${tournamentName || "results"}.pdf`);
+    } catch (e) {
+      console.error("PDF export failed:", e);
+    }
+    setExporting(false);
+  };
 
   const addMatch = () => {
     if (!onPlayoffsUpdate) return;
@@ -479,11 +515,18 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
     <div className="flex-1 flex flex-col p-[3vw] sm:p-[2.5vw] gap-[2vh] min-h-0 overflow-auto">
       <div className="flex items-center justify-between shrink-0">
         <h2 className={`text-[5vw] sm:text-[1.8vw] font-bold ${th.textPrimary}`}>Results</h2>
-        {fetchGames && (
-          <button onClick={fetchGames} className={`text-[3vw] sm:text-[1.1vw] transition-colors px-[3vw] sm:px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
-        )}
+        <div className="flex gap-[1vw]">
+          <button onClick={exportPdf} disabled={exporting}
+            className={`text-[3vw] sm:text-[1.1vw] transition-colors px-[3vw] sm:px-[1vw] py-[0.5vh] rounded-lg disabled:opacity-40 ${th.btnSecondary}`}>
+            {exporting ? "Exporting…" : "PDF"}
+          </button>
+          {fetchGames && (
+            <button onClick={fetchGames} className={`text-[3vw] sm:text-[1.1vw] transition-colors px-[3vw] sm:px-[1vw] py-[0.5vh] rounded-lg ${th.btnSecondary}`}>↻ Refresh</button>
+          )}
+        </div>
       </div>
 
+      <div ref={pdfRef} className="flex flex-col gap-[2vh]">
       {currentMatch && currentMatch.player1 && (
         <LiveMatch match={currentMatch} th={th} />
       )}
@@ -510,6 +553,8 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
           onUpdate={onPlayoffsUpdate ? (m) => updateMatch(match.id, m) : undefined}
           onRemove={onPlayoffsUpdate ? () => removeMatch(match.id) : undefined} />
       ))}
+
+      </div>
 
       {onPlayoffsUpdate && (
         <button onClick={addMatch}
@@ -939,6 +984,7 @@ export default function GamePage() {
           teamGroups={viewingRoom.team_groups}
           currentMatch={viewingRoom.current_match}
           playoffs={viewingRoom.playoffs}
+          tournamentName={viewingRoom.name}
         />
       </main>
     );
@@ -1252,6 +1298,7 @@ export default function GamePage() {
             setPlayoffs(p);
             if (room) updateRoomPlayoffs(room.id, p).catch(() => {});
           }}
+          tournamentName={tournamentName}
         />
       )}
 
