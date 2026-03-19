@@ -468,6 +468,18 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
       const html2canvas = (await import("html2canvas-pro")).default;
       const { jsPDF } = await import("jspdf");
       const el = pdfRef.current;
+      // Temporarily remove overflow clipping so full content is captured
+      const scrollParent = el.parentElement;
+      const prevOverflow = scrollParent?.style.overflow ?? "";
+      const prevMinH = scrollParent?.style.minHeight ?? "";
+      const prevMaxH = scrollParent?.style.maxHeight ?? "";
+      const prevH = scrollParent?.style.height ?? "";
+      if (scrollParent) {
+        scrollParent.style.overflow = "visible";
+        scrollParent.style.minHeight = "auto";
+        scrollParent.style.maxHeight = "none";
+        scrollParent.style.height = "auto";
+      }
       const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: null });
       const imgData = canvas.toDataURL("image/png");
       const imgW = canvas.width;
@@ -486,6 +498,13 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
           pdf.addImage(imgData, "PNG", 0, -y, pdfW, pdfH);
           y += pageH;
         }
+      }
+      // Restore parent styles
+      if (scrollParent) {
+        scrollParent.style.overflow = prevOverflow;
+        scrollParent.style.minHeight = prevMinH;
+        scrollParent.style.maxHeight = prevMaxH;
+        scrollParent.style.height = prevH;
       }
       pdf.save(`${tournamentName || "results"}.pdf`);
     } catch (e) {
