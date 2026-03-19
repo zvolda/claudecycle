@@ -811,8 +811,9 @@ export default function GamePage() {
   const finishRef = useRef<() => void>(() => {});
   finishRef.current = () => {
     clearTimer(); setRunning(false); setFinished(true);
+    setSecondsLeft(selectedMinutes * 60);
     playAlarm();
-    pushMatchState({ r: false, f: true, sl: 0 });
+    pushMatchState({ r: false, f: true, sl: selectedMinutes * 60 });
   };
   useEffect(() => {
     if (running) {
