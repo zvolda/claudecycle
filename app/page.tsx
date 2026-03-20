@@ -484,9 +484,11 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
       try { return Array.from(ss.cssRules).map(r => r.cssText).join("\n"); } catch { return ""; }
     }).join("\n");
 
-    const bg = window.getComputedStyle(document.body).backgroundColor || "#000";
+    const mainEl = el.closest("main") || document.querySelector("main") || document.body;
+    const bg = window.getComputedStyle(mainEl).backgroundColor || "#000";
+    const color = window.getComputedStyle(mainEl).color || "#fff";
     win.document.write(`<!DOCTYPE html><html><head><style>${styles}
-      html, body { margin: 0; padding: 20px; background: ${bg}; }
+      html, body { margin: 0; padding: 20px; background: ${bg}; color: ${color}; }
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style></head><body>${el.outerHTML}</body></html>`);
     win.document.close();
