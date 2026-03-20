@@ -924,13 +924,12 @@ function GamePage() {
       if (half === 1) {
         setHalf(2);
         setFirstHalfScores({ team1: p1, score1: s1, team2: p2, score2: s2 });
-        setScore1(0); setScore2(0);
       }
     }
-    setPlayer1(p2); setPlayer2(p1); if (!wasFinished) { setScore1(s2); setScore2(s1); }
+    setPlayer1(p2); setPlayer2(p1); setScore1(s2); setScore2(s1);
     setTimeout(() => pushMatchState({
       p1: p2, p2: p1,
-      s1: wasFinished ? 0 : s2, s2: wasFinished ? 0 : s1,
+      s1: s2, s2: s1,
       r: false, f: false,
       sl: wasFinished ? selectedMinutes * 60 : secondsLeft,
       h: wasFinished && half === 1 ? 2 : half,
@@ -976,16 +975,14 @@ function GamePage() {
   // ── Save result from game screen after 2nd half ──
   const handleSaveMatchResult = useCallback(async () => {
     if (!firstHalfScores) return;
-    // Compute total scores: 1st half + 2nd half (teams are swapped in 2nd half)
-    const { team1, score1: fh1, team2, score2: fh2 } = firstHalfScores;
-    // In 2nd half, team1 is now player2, team2 is now player1
-    const total1 = fh1 + score2; // team1's total = 1st half + 2nd half (they're player2 now)
-    const total2 = fh2 + score1; // team2's total = 1st half + 2nd half (they're player1 now)
+    const { team1, team2 } = firstHalfScores;
+    // Scores are cumulative — team1 is player2 in 2nd half, team2 is player1
+    const total1 = score2; // team1's total (they're player2 now)
+    const total2 = score1; // team2's total (they're player1 now)
 
     // Check if result already exists for this pair
     const existing = getMatchResult(games, team1, team2);
     if (!existing) {
-      // No result yet — save to games table
       await saveResult(team1, team2, total1, total2);
     } else if (playoffs && playoffs.length > 0) {
       // Result exists — find matching playoff match and fill score
@@ -1232,7 +1229,7 @@ function GamePage() {
                 <div className={`w-px h-[3vh] ${th.divider}`} />
                 <button onClick={handleSaveMatchResult}
                   className="px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] bg-green-600 hover:bg-green-500 text-white transition-colors whitespace-nowrap">
-                  Save Result ({firstHalfScores.score1 + score2}:{firstHalfScores.score2 + score1})
+                  Save Result ({score2}:{score1})
                 </button>
               </>
             )}
