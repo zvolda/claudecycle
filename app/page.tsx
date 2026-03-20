@@ -1203,12 +1203,6 @@ function GamePage() {
             )}
             {editingTime && <span className="absolute bottom-[10%] text-yellow-600 text-[1.1vw] font-medium">left click + · right click −</span>}
             {finished && <p className="text-red-500 font-bold animate-pulse text-[2.5vw] mt-[2vh]">Time&apos;s up!</p>}
-            {finished && half === 2 && firstHalfScores && (
-              <button onClick={handleSaveMatchResult}
-                className="absolute bottom-[3%] px-[2vw] py-[1vh] rounded-xl font-bold text-[1.5vw] bg-green-600 hover:bg-green-500 text-white transition-colors">
-                Save Result ({firstHalfScores.score1 + score2}:{firstHalfScores.score2 + score1})
-              </button>
-            )}
           </div>
 
           {/* Bottom controls */}
@@ -1232,6 +1226,15 @@ function GamePage() {
                 className={`px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] transition-colors whitespace-nowrap ${editingTime ? "bg-yellow-400 text-black hover:bg-yellow-300 border border-yellow-400" : th.btnSecondary}`}>
                 {editingTime ? "Done" : "Set Time"}
               </button>
+            )}
+            {finished && half === 2 && firstHalfScores && (
+              <>
+                <div className={`w-px h-[3vh] ${th.divider}`} />
+                <button onClick={handleSaveMatchResult}
+                  className="px-[1.5vw] py-[0.8vh] rounded-xl font-bold text-[1.3vw] bg-green-600 hover:bg-green-500 text-white transition-colors whitespace-nowrap">
+                  Save Result ({firstHalfScores.score1 + score2}:{firstHalfScores.score2 + score1})
+                </button>
+              </>
             )}
           </div>
         </div>
