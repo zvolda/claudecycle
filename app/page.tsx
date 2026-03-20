@@ -980,12 +980,11 @@ function GamePage() {
     const total1 = score2; // team1's total (they're player2 now)
     const total2 = score1; // team2's total (they're player1 now)
 
-    // Check if result already exists for this pair
-    const existing = getMatchResult(games, team1, team2);
-    if (!existing) {
-      await saveResult(team1, team2, total1, total2);
-    } else if (playoffs && playoffs.length > 0) {
-      // Result exists — find matching playoff match and fill score
+    // Always save to games table (saveResult upserts via delete+insert)
+    await saveResult(team1, team2, total1, total2);
+
+    // Also fill matching playoff match if one exists
+    if (playoffs && playoffs.length > 0) {
       const updated = playoffs.map(m => {
         const match1 = (m.team1 === team1 && m.team2 === team2);
         const match2 = (m.team1 === team2 && m.team2 === team1);
@@ -997,7 +996,7 @@ function GamePage() {
       if (room) updateRoomPlayoffs(room.id, updated).catch(() => {});
     }
     setFirstHalfScores(null);
-  }, [firstHalfScores, score1, score2, games, playoffs, room, saveResult]);
+  }, [firstHalfScores, score1, score2, playoffs, room, saveResult]);
 
   const mins = Math.floor(secondsLeft / 60), secs = secondsLeft % 60;
   const timeStr = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
