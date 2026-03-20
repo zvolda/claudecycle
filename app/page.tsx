@@ -1298,6 +1298,14 @@ function GamePage() {
                   Leave Room
                 </button>
               </div>
+              <div className="flex items-center gap-[0.5vw]">
+                <span className={`text-[1.1vw] ${th.textMuted}`}>Viewer link:</span>
+                <span className={`text-[1.1vw] font-mono ${th.textSec}`}>{`${typeof window !== "undefined" ? window.location.origin : ""}/t/${room.id}`}</span>
+                <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/t/${room.id}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                  className={`text-[1.1vw] leading-none transition-colors px-[0.3vw] ${th.btnSecondary} rounded-md`}>
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
