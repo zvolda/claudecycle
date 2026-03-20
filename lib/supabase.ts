@@ -40,6 +40,7 @@ export type Room = {
   id: string;
   pin: string;
   name: string;
+  slug: string;
   teams: string[];
   duration_minutes: number;
   two_groups: boolean;
@@ -61,23 +62,41 @@ export type Game = {
   room_id: string;
 };
 
-/** Create a new room with a random 6-char alphanumeric code. Retries on collision. */
-export async function createRoom(): Promise<Room> {
+export function toSlug(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+/** Create a new room with a name, slug, and random 6-char code. */
+export async function createRoom(name: string): Promise<Room> {
   const sb = getSupabase();
+  const slug = toSlug(name);
+  if (!slug) throw new Error("Tournament name is required");
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   for (let attempt = 0; attempt < 10; attempt++) {
     let pin = "";
     for (let i = 0; i < 6; i++) pin += chars[Math.floor(Math.random() * chars.length)];
     const { data, error } = await sb
       .from("rooms")
-      .insert({ pin })
+      .insert({ pin, name: name.trim(), slug })
       .select()
       .single();
     if (data) return data as Room;
-    if (error && error.code === "23505") continue;
+    // 23505 = unique_violation (PIN or slug collision)
+    if (error && error.code === "23505") {
+      if (error.message?.includes("slug")) throw new Error("Tournament name already taken");
+      continue;
+    }
     throw new Error(error?.message ?? "Failed to create room");
   }
   throw new Error("Could not generate a unique code after 10 attempts");
+}
+
+/** Fetch a room by slug. */
+export async function fetchRoomBySlug(slug: string): Promise<Room | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from("rooms").select("*").eq("slug", slug).single();
+  if (error || !data) return null;
+  return data as Room;
 }
 
 /** Join an existing room by PIN. Returns the room or null if not found. */
@@ -106,11 +125,16 @@ export async function updateRoomDuration(roomId: string, minutes: number): Promi
   if (error) throw new Error(error.message);
 }
 
-/** Update the tournament name for a room. */
-export async function updateRoomName(roomId: string, name: string): Promise<void> {
+/** Update the tournament name and slug for a room. */
+export async function updateRoomName(roomId: string, name: string): Promise<{ slug: string }> {
   const sb = getSupabase();
-  const { error } = await sb.from("rooms").update({ name }).eq("id", roomId);
-  if (error) throw new Error(error.message);
+  const slug = toSlug(name);
+  const { error } = await sb.from("rooms").update({ name, slug }).eq("id", roomId);
+  if (error) {
+    if (error.code === "23505" && error.message?.includes("slug")) throw new Error("Tournament name already taken");
+    throw new Error(error.message);
+  }
+  return { slug };
 }
 
 /** Update two-groups toggle and team-to-group mapping. */

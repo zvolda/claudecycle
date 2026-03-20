@@ -17,9 +17,11 @@ import {
   updateRoomPlayoffs,
   updateCurrentMatch,
   fetchRoom,
+  fetchRoomBySlug,
   touchRoom,
   fetchRoomGames,
   fetchAllRooms,
+  toSlug,
 } from "@/lib/supabase";
 
 const PRESETS = [5, 6, 7];
@@ -643,13 +645,13 @@ function GamePage() {
     }
   }, []);
 
-  // ── Auto-open tournament from URL (?view=roomId) ──
+  // ── Auto-open tournament from URL (?slug=name) ──
   const searchParams = useSearchParams();
   useEffect(() => {
-    const viewId = searchParams.get("view");
-    if (!viewId || room || viewingRoom) return;
+    const slug = searchParams.get("slug");
+    if (!slug || room || viewingRoom) return;
     (async () => {
-      const r = await fetchRoom(viewId);
+      const r = await fetchRoomBySlug(slug);
       if (r) {
         setViewingRoom(r);
         setViewLoading(true);
@@ -680,10 +682,13 @@ function GamePage() {
   };
 
   // ── Room actions ──
+  const [newRoomName, setNewRoomName] = useState("");
   const handleCreateRoom = async () => {
+    const name = newRoomName.trim();
+    if (!name) { setRoomError("Tournament name is required"); return; }
     setRoomLoading(true); setRoomError("");
     try {
-      const r = await createRoom();
+      const r = await createRoom(name);
       localStorage.setItem(STORAGE_PIN_KEY, r.pin);
       setRoom(r);
       setTeams(r.teams);
@@ -777,8 +782,14 @@ function GamePage() {
   const removeTeam = (n: string) => persistTeams(teams.filter((t) => t !== n));
 
   // ── Tournament name ──
-  const saveTournamentName = () => {
-    if (room) updateRoomName(room.id, tournamentName.trim()).catch(() => {});
+  const saveTournamentName = async () => {
+    if (!room) return;
+    try {
+      const { slug } = await updateRoomName(room.id, tournamentName.trim());
+      setRoom({ ...room, name: tournamentName.trim(), slug });
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("already taken")) alert(e.message);
+    }
   };
 
   // ── Group settings ──
@@ -991,7 +1002,7 @@ function GamePage() {
             ← Back
           </button>
           <h1 className={`text-[2vw] font-bold flex-1 ${th.textPrimary}`}>{viewingRoom.name || "Unnamed Tournament"}</h1>
-          <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/t/${viewingRoom.id}`); }}
+          <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/t/${viewingRoom.slug}`); }}
             className={`text-[1.3vw] transition-colors px-[1.5vw] py-[0.8vh] rounded-xl ${th.btnSecondary}`}>
             Share link
           </button>
@@ -1021,10 +1032,22 @@ function GamePage() {
             Sport Timer
           </h1>
 
-          <button onClick={handleCreateRoom} disabled={roomLoading}
-            className={`w-full py-4 rounded-2xl font-bold text-lg transition-colors disabled:opacity-40 ${th.btnPrimary}`}>
-            {roomLoading ? "Creating..." : "Create Tournament"}
-          </button>
+          <div className="flex flex-col gap-3 w-full">
+            <input
+              value={newRoomName}
+              onChange={(e) => setNewRoomName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}
+              placeholder="Tournament name"
+              className={`w-full outline-none rounded-xl px-4 py-3 text-lg transition-colors ${th.input}`}
+            />
+            {newRoomName.trim() && (
+              <p className={`text-xs ${th.gateText}`}>URL: /t/{toSlug(newRoomName)}</p>
+            )}
+            <button onClick={handleCreateRoom} disabled={roomLoading || !newRoomName.trim()}
+              className={`w-full py-4 rounded-2xl font-bold text-lg transition-colors disabled:opacity-40 ${th.btnPrimary}`}>
+              {roomLoading ? "Creating..." : "Create Tournament"}
+            </button>
+          </div>
 
           <div className="flex items-center gap-3 w-full">
             <div className={`flex-1 h-px ${th.divider}`} />
@@ -1300,8 +1323,8 @@ function GamePage() {
               </div>
               <div className="flex items-center gap-[0.5vw]">
                 <span className={`text-[1.1vw] ${th.textMuted}`}>Viewer link:</span>
-                <span className={`text-[1.1vw] font-mono ${th.textSec}`}>{`${typeof window !== "undefined" ? window.location.origin : ""}/t/${room.id}`}</span>
-                <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/t/${room.id}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                <span className={`text-[1.1vw] font-mono ${th.textSec}`}>{`${typeof window !== "undefined" ? window.location.origin : ""}/t/${room.slug}`}</span>
+                <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/t/${room.slug}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
                   className={`text-[1.1vw] leading-none transition-colors px-[0.3vw] ${th.btnSecondary} rounded-md`}>
                   {copied ? "Copied!" : "Copy"}
                 </button>
