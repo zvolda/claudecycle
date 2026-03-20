@@ -606,6 +606,7 @@ function GamePage() {
   const [finished, setFinished] = useState(false);
   const [tab, setTab] = useState<"game" | "settings" | "results">("game");
   const [half, setHalf] = useState<1 | 2>(1);
+  const [firstHalfScores, setFirstHalfScores] = useState<{ team1: string; score1: number; team2: string; score2: number } | null>(null);
   const [editingTime, setEditingTime] = useState(false);
   const [games, setGames] = useState<Game[]>([]);
   const [loadingGames, setLoadingGames] = useState(false);
@@ -906,7 +907,7 @@ function GamePage() {
     setSelectedMinutes(m); setSecondsLeft(m * 60);
     if (room) updateRoomDuration(room.id, m).catch(() => {});
   };
-  const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); if (room) updateCurrentMatch(room.id, null).catch(() => {}); };
+  const resetGame = () => { clearTimer(); setRunning(false); setFinished(false); setScore1(0); setScore2(0); setSecondsLeft(selectedMinutes * 60); setHalf(1); setFirstHalfScores(null); if (room) updateCurrentMatch(room.id, null).catch(() => {}); };
   const teamsReady = teams.length > 0 && teams.includes(player1) && teams.includes(player2) && player1 !== player2;
   const handleTimerClick = () => {
     if (editingTime || finished || !teamsReady) return;
@@ -917,11 +918,18 @@ function GamePage() {
     });
   };
   const swapTeams = () => {
-    const wasFinished = finished; const p1 = player1, s1 = score1, s2 = score2;
-    if (wasFinished) { clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60); if (half === 1) setHalf(2); }
-    setPlayer1(player2); setPlayer2(p1); if (!wasFinished) { setScore1(s2); setScore2(s1); }
+    const wasFinished = finished; const p1 = player1, p2 = player2, s1 = score1, s2 = score2;
+    if (wasFinished) {
+      clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60);
+      if (half === 1) {
+        setHalf(2);
+        setFirstHalfScores({ team1: p1, score1: s1, team2: p2, score2: s2 });
+        setScore1(0); setScore2(0);
+      }
+    }
+    setPlayer1(p2); setPlayer2(p1); if (!wasFinished) { setScore1(s2); setScore2(s1); }
     setTimeout(() => pushMatchState({
-      p1: player2, p2: p1,
+      p1: p2, p2: p1,
       s1: wasFinished ? 0 : s2, s2: wasFinished ? 0 : s1,
       r: false, f: false,
       sl: wasFinished ? selectedMinutes * 60 : secondsLeft,
@@ -964,6 +972,35 @@ function GamePage() {
       await fetchGames();
     } catch { /* silently fail */ }
   }, [room, selectedMinutes, fetchGames]);
+
+  // ── Save result from game screen after 2nd half ──
+  const handleSaveMatchResult = useCallback(async () => {
+    if (!firstHalfScores) return;
+    // Compute total scores: 1st half + 2nd half (teams are swapped in 2nd half)
+    const { team1, score1: fh1, team2, score2: fh2 } = firstHalfScores;
+    // In 2nd half, team1 is now player2, team2 is now player1
+    const total1 = fh1 + score2; // team1's total = 1st half + 2nd half (they're player2 now)
+    const total2 = fh2 + score1; // team2's total = 1st half + 2nd half (they're player1 now)
+
+    // Check if result already exists for this pair
+    const existing = getMatchResult(games, team1, team2);
+    if (!existing) {
+      // No result yet — save to games table
+      await saveResult(team1, team2, total1, total2);
+    } else if (playoffs && playoffs.length > 0) {
+      // Result exists — find matching playoff match and fill score
+      const updated = playoffs.map(m => {
+        const match1 = (m.team1 === team1 && m.team2 === team2);
+        const match2 = (m.team1 === team2 && m.team2 === team1);
+        if (match1) return { ...m, score1: total1, score2: total2 };
+        if (match2) return { ...m, score1: total2, score2: total1 };
+        return m;
+      });
+      setPlayoffs(updated);
+      if (room) updateRoomPlayoffs(room.id, updated).catch(() => {});
+    }
+    setFirstHalfScores(null);
+  }, [firstHalfScores, score1, score2, games, playoffs, room, saveResult]);
 
   const mins = Math.floor(secondsLeft / 60), secs = secondsLeft % 60;
   const timeStr = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
@@ -1166,17 +1203,23 @@ function GamePage() {
             )}
             {editingTime && <span className="absolute bottom-[10%] text-yellow-600 text-[1.1vw] font-medium">left click + · right click −</span>}
             {finished && <p className="text-red-500 font-bold animate-pulse text-[2.5vw] mt-[2vh]">Time&apos;s up!</p>}
+            {finished && half === 2 && firstHalfScores && (
+              <button onClick={handleSaveMatchResult}
+                className="absolute bottom-[3%] px-[2vw] py-[1vh] rounded-xl font-bold text-[1.5vw] bg-green-600 hover:bg-green-500 text-white transition-colors">
+                Save Result ({firstHalfScores.score1 + score2}:{firstHalfScores.score2 + score1})
+              </button>
+            )}
           </div>
 
           {/* Bottom controls */}
           <div className="absolute bottom-[1.5%] left-1/2 -translate-x-1/2 flex flex-nowrap items-center gap-[1.5vw]">
             {teams.length > 0 ? (
               <>
-                <select value={player1} onChange={(e) => { setPlayer1(e.target.value); setHalf(1); setScore1(0); setScore2(0); clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60); setTimeout(() => pushMatchState({ p1: e.target.value, h: 1, s1: 0, s2: 0, r: false, f: false, sl: selectedMinutes * 60 }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
+                <select value={player1} onChange={(e) => { setPlayer1(e.target.value); setHalf(1); setFirstHalfScores(null); setScore1(0); setScore2(0); clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60); setTimeout(() => pushMatchState({ p1: e.target.value, h: 1, s1: 0, s2: 0, r: false, f: false, sl: selectedMinutes * 60 }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
                   {teams.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
                 <button onClick={swapTeams} title="Swap teams and scores" className={`text-[1.8vw] font-bold leading-none px-[0.3vw] transition-colors ${th.swap}`}>⇄</button>
-                <select value={player2} onChange={(e) => { setPlayer2(e.target.value); setHalf(1); setScore1(0); setScore2(0); clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60); setTimeout(() => pushMatchState({ p2: e.target.value, h: 1, s1: 0, s2: 0, r: false, f: false, sl: selectedMinutes * 60 }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
+                <select value={player2} onChange={(e) => { setPlayer2(e.target.value); setHalf(1); setFirstHalfScores(null); setScore1(0); setScore2(0); clearTimer(); setRunning(false); setFinished(false); setSecondsLeft(selectedMinutes * 60); setTimeout(() => pushMatchState({ p2: e.target.value, h: 1, s1: 0, s2: 0, r: false, f: false, sl: selectedMinutes * 60 }), 0); }} className={`rounded-lg px-[1vw] py-[0.6vh] text-[1.2vw] outline-none cursor-pointer transition-colors ${th.select}`}>
                   {teams.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </>
