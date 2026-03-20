@@ -974,17 +974,21 @@ function GamePage() {
 
   // ── Save result from game screen after 2nd half ──
   const handleSaveMatchResult = useCallback(async () => {
-    if (!firstHalfScores) return;
+    if (!firstHalfScores || !room) return;
     const { team1, team2 } = firstHalfScores;
     // Scores are cumulative — team1 is player2 in 2nd half, team2 is player1
     const total1 = score2; // team1's total (they're player2 now)
     const total2 = score1; // team2's total (they're player1 now)
 
-    // Always save to games table (saveResult upserts via delete+insert)
-    await saveResult(team1, team2, total1, total2);
+    // Fetch fresh games to check if group result already exists
+    const freshGames = await fetchRoomGames(room.id);
+    const existing = getMatchResult(freshGames, team1, team2);
 
-    // Also fill matching playoff match if one exists
-    if (playoffs && playoffs.length > 0) {
+    if (!existing) {
+      // No group result yet — save to games table
+      await saveResult(team1, team2, total1, total2);
+    } else if (playoffs && playoffs.length > 0) {
+      // Group result exists — only update matching playoff match
       const updated = playoffs.map(m => {
         const match1 = (m.team1 === team1 && m.team2 === team2);
         const match2 = (m.team1 === team2 && m.team2 === team1);
