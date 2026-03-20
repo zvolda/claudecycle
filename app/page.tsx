@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   getSupabase,
   Game,
@@ -563,7 +564,11 @@ function ResultsView({ teams, games, th, fetchGames, loadingGames, fetchError, t
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function GamePage() {
+export default function GamePageWrapper() {
+  return <Suspense><GamePage /></Suspense>;
+}
+
+function GamePage() {
   const [theme, setTheme] = useState<ThemeKey>("dark");
 
   // Room state
@@ -637,6 +642,23 @@ export default function GamePage() {
       setCheckingStorage(false);
     }
   }, []);
+
+  // ── Auto-open tournament from URL (?view=roomId) ──
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const viewId = searchParams.get("view");
+    if (!viewId || room || viewingRoom) return;
+    (async () => {
+      const r = await fetchRoom(viewId);
+      if (r) {
+        setViewingRoom(r);
+        setViewLoading(true);
+        const games = await fetchRoomGames(r.id);
+        setViewGames(games);
+        setViewLoading(false);
+      }
+    })();
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Fetch public tournament list when on gate screen ──
   const loadTournaments = useCallback(async () => {
@@ -964,11 +986,15 @@ export default function GamePage() {
     return (
       <main className={`h-screen w-screen overflow-hidden select-none flex flex-col ${th.main}`}>
         <div className="flex items-center gap-4 px-[2.5vw] pt-[2vw] shrink-0">
-          <button onClick={() => { setViewingRoom(null); setViewGames([]); }}
+          <button onClick={() => { setViewingRoom(null); setViewGames([]); window.history.replaceState({}, "", "/"); }}
             className={`text-[1.3vw] transition-colors px-[1.5vw] py-[0.8vh] rounded-xl ${th.btnSecondary}`}>
             ← Back
           </button>
-          <h1 className={`text-[2vw] font-bold ${th.textPrimary}`}>{viewingRoom.name || "Unnamed Tournament"}</h1>
+          <h1 className={`text-[2vw] font-bold flex-1 ${th.textPrimary}`}>{viewingRoom.name || "Unnamed Tournament"}</h1>
+          <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/t/${viewingRoom.id}`); }}
+            className={`text-[1.3vw] transition-colors px-[1.5vw] py-[0.8vh] rounded-xl ${th.btnSecondary}`}>
+            Share link
+          </button>
         </div>
         <ResultsView
           teams={viewingRoom.teams}
