@@ -1149,7 +1149,7 @@ function GamePage() {
 
           {/* Team 1 — top-left */}
           <div className="absolute top-[4%] left-[4%] flex flex-col gap-[1vh]">
-            <span className={`font-bold text-[5vw] max-w-[45vw] truncate ${th.textPrimary}`}>{player1}</span>
+            <span className={`font-bold text-[5vw] max-w-[35vw] truncate ${th.textPrimary}`}>{player1}</span>
             <div className={`w-[18vw] h-[34vh] rounded-xl flex items-center justify-center cursor-pointer transition-colors ${th.scoreBox}`}
               onClick={(e) => handleScoreClick(1, e)} onContextMenu={(e) => handleScoreClick(1, e)}
               title="Left click +1 · Right click −1">
@@ -1159,7 +1159,7 @@ function GamePage() {
 
           {/* Team 2 — top-right */}
           <div className="absolute top-[4%] right-[4%] flex flex-col gap-[1vh] items-end">
-            <span className={`font-bold text-[5vw] max-w-[45vw] truncate text-right ${th.textPrimary}`}>{player2}</span>
+            <span className={`font-bold text-[5vw] max-w-[35vw] truncate text-right ${th.textPrimary}`}>{player2}</span>
             <div className={`w-[18vw] h-[34vh] rounded-xl flex items-center justify-center cursor-pointer transition-colors ${th.scoreBox}`}
               onClick={(e) => handleScoreClick(2, e)} onContextMenu={(e) => handleScoreClick(2, e)}
               title="Left click +1 · Right click −1">
